@@ -107,19 +107,19 @@ export default function WelcomePage() {
             </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             
-            <a href="/docs/guides/QUICK_START.md" className="group p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 transition-colors">
+            <a href="https://github.com/oxich/oxichstudio/blob/main/docs/guides/QUICK_START.md" target="_blank" rel="noopener noreferrer" className="group p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 transition-colors">
               <div className="text-blue-500 text-2xl mb-2">⚡</div>
               <h3 className="font-semibold text-gray-800 group-hover:text-blue-600">Quick Start Guide</h3>
               <p className="text-sm text-gray-600 mt-1">Get OxichStudio running in 5 minutes</p>
             </a>
 
-            <a href="/docs/guides/USER_GUIDE.md" className="group p-4 border-2 border-gray-200 rounded-lg hover:border-green-500 transition-colors">
+            <a href="https://github.com/oxich/oxichstudio/blob/main/docs/guides/USER_GUIDE.md" target="_blank" rel="noopener noreferrer" className="group p-4 border-2 border-gray-200 rounded-lg hover:border-green-500 transition-colors">
               <div className="text-green-500 text-2xl mb-2">👥</div>
               <h3 className="font-semibold text-gray-800 group-hover:text-green-600">User Guide</h3>
               <p className="text-sm text-gray-600 mt-1">Complete interface and features guide</p>
             </a>
 
-            <a href="/docs/guides/TROUBLESHOOTING.md" className="group p-4 border-2 border-gray-200 rounded-lg hover:border-red-500 transition-colors">
+            <a href="https://github.com/oxich/oxichstudio/blob/main/docs/guides/TROUBLESHOOTING.md" target="_blank" rel="noopener noreferrer" className="group p-4 border-2 border-gray-200 rounded-lg hover:border-red-500 transition-colors">
               <div className="text-red-500 text-2xl mb-2">🚨</div>
               <h3 className="font-semibold text-gray-800 group-hover:text-red-600">Troubleshooting</h3>
               <p className="text-sm text-gray-600 mt-1">Solutions to common issues</p>
@@ -164,7 +164,9 @@ export default function WelcomePage() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <a 
-                href="/docs/guides/QUICK_START.md" 
+                href="https://github.com/oxich/oxichstudio/blob/main/docs/README.md"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="bg-white text-blue-600 hover:bg-gray-100 px-6 py-3 rounded-lg font-medium transition-colors inline-block"
               >
                 📖 Read Documentation
