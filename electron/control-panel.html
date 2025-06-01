@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Control - OxichStudio Electron + Next.js</title>
+    <style>
+        /* === RESET AND BASE === */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* === HEADER === */
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            color: #2d3748;
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+
+        .header .subtitle {
+            color: #718096;
+            font-size: 14px;
+        }
+
+        /* === MAIN CONTENT === */
+        .container {
+            flex: 1;
+            padding: 30px;
+            max-width: 800px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        /* === STATUS CARD === */
+        .status-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 25px rgba(0,0,0,0.1);
+            border-left: 4px solid #4299e1;
+        }
+
+        .status-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .status-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-running {
+            background: #c6f6d5;
+            color: #276749;
+        }
+
+        .status-stopped {
+            background: #fed7d7;
+            color: #9b2c2c;
+        }
+
+        .status-starting {
+            background: #fef5e7;
+            color: #b7791f;
+        }
+
+        .status-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .info-item {
+            text-align: center;
+            padding: 15px;
+            background: #f7fafc;
+            border-radius: 8px;
+        }
+
+        .info-label {
+            font-size: 12px;
+            color: #718096;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+
+        .info-value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        /* === CONTROLS === */
+        .controls {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 25px rgba(0,0,0,0.1);
+        }
+
+        .controls h3 {
+            margin-bottom: 20px;
+            color: #2d3748;
+            font-size: 16px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 120px;
+            justify-content: center;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-primary {
+            background: #4299e1;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-success {
+            background: #48bb78;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #a0aec0;
+            color: white;
+        }
+
+        /* === CONFIGURATION === */
+        .config-section {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 25px rgba(0,0,0,0.1);
+        }
+
+        .config-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #4a5568;
+            margin-bottom: 8px;
+        }
+
+        .form-input, .form-select {
+            padding: 10px 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        .form-input:focus, .form-select:focus {
+            outline: none;
+            border-color: #4299e1;
+        }
+
+        /* === LOGS === */
+        .logs-section {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 25px rgba(0,0,0,0.1);
+        }
+
+        .logs-container {
+            background: #1a202c;
+            color: #68d391;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            line-height: 1.4;
+        }
+
+        /* === MESSAGES === */
+        .message {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .message-success {
+            background: #c6f6d5;
+            color: #276749;
+            border-left: 4px solid #48bb78;
+        }
+
+        .message-error {
+            background: #fed7d7;
+            color: #9b2c2c;
+            border-left: 4px solid #f56565;
+        }
+
+        .message-info {
+            background: #bee3f8;
+            color: #2c5282;
+            border-left: 4px solid #4299e1;
+        }
+
+        /* === RESPONSIVE === */
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+            
+            .button-group {
+                flex-direction: column;
+            }
+            
+            .btn {
+                min-width: auto;
+            }
+            
+            .config-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* === LOADING SPINNER === */
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* === HIDDEN === */
+        .hidden {
+            display: none;
+        }
+
+        /* === ADDITIONAL STYLES FOR WARNING BUTTON === */
+        .btn-warning {
+            background: #f6ad55 !important;
+            color: white !important;
+        }
+        .btn-warning:hover {
+            background: #ed8936 !important;
+        }
+
+        /* === STYLES FOR SERVER ACCESS SECTION === */
+        .access-section {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 25px rgba(0,0,0,0.1);
+            border-left: 4px solid #48bb78;
+        }
+
+        .ip-info {
+            background: #f7fafc;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 8px;
+        }
+
+        .ip-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding: 8px 12px;
+            background: white;
+            border-radius: 6px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .ip-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .ip-label {
+            color: #718096;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .ip-value {
+            font-family: 'Consolas', 'Monaco', monospace;
+            color: #2d3748;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .copy-btn {
+            background: #4299e1;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .copy-btn:hover {
+            background: #3182ce;
+        }
+
+        .copy-btn:active {
+            background: #2b6cb0;
+        }
+
+        .help-text {
+            font-size: 12px;
+            color: #718096;
+            margin-top: 4px;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+    <!-- HEADER -->
+    <div class="header">
+        <h1>🚀 OxichStudio Server Control Interface</h1>
+        <div class="subtitle">Electron + Next.js - Standalone Mode</div>
+    </div>
+
+    <!-- MAIN CONTAINER -->
+    <div class="container">
+        <!-- MESSAGES -->
+        <div id="messages-container"></div>
+
+        <!-- SERVER STATUS -->
+        <div class="status-card">
+            <div class="status-header">
+                <div class="status-title">Server Status</div>
+                <div id="server-status-badge" class="status-badge status-stopped">Stopped</div>
+            </div>
+            
+            <div class="status-info">
+                <div class="info-item">
+                    <div class="info-label">Port</div>
+                    <div id="server-port" class="info-value">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Network IP</div>
+                    <div id="server-network-ip" class="info-value">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">PID</div>
+                    <div id="server-pid" class="info-value">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Uptime</div>
+                    <div id="server-uptime" class="info-value">-</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SERVER CONTROLS -->
+        <div class="controls">
+            <h3>🎮 Server Controls</h3>
+            <div class="button-group">
+                <button id="start-btn" class="btn btn-success">
+                    <span>▶️</span> Start
+                </button>
+                <button id="stop-btn" class="btn btn-danger" disabled>
+                    <span>⏹️</span> Stop
+                </button>
+                <button id="restart-btn" class="btn btn-primary" disabled>
+                    <span>🔄</span> Restart
+                </button>
+                <button id="open-app-btn" class="btn btn-secondary" disabled>
+                    <span>🌐</span> Open App
+                </button>
+            </div>
+        </div>
+
+        <!-- CONFIGURATION -->
+        <div class="config-section">
+            <h3>⚙️ Configuration</h3>
+            <div class="config-grid">
+                <div class="form-group">
+                    <label class="form-label" for="port-input">Port</label>
+                    <input type="number" id="port-input" class="form-input" value="8080" min="1000" max="65535">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">
+                        <input type="checkbox" id="auto-start" style="margin-right: 8px;">
+                        Auto Start
+                    </label>
+                    <div class="help-text">
+                        Automatically starts the server when OxichStudio launches and restarts it if it crashes unexpectedly. Manual stop/start operations are not affected.
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">
+                        <input type="checkbox" id="enable-lan" style="margin-right: 8px;">
+                        Allow network access (LAN)
+                    </label>
+                    <div class="help-text">
+                        If enabled, the server will be accessible from other devices on the local network.
+                        If disabled, only the local machine can access the server.
+                    </div>
+                </div>
+                <div class="form-group">
+                    <button id="save-config-btn" class="btn btn-primary">💾 Save</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SERVER ACCESS SECTION -->
+        <div class="access-section">
+            <h3>🌐 Server Access</h3>
+            <div class="ip-info">
+                <div class="ip-item">
+                    <span class="ip-label">Local IP:</span>
+                    <span id="access-local-ip" class="ip-value">127.0.0.1</span>
+                    <button class="copy-btn" onclick="copyToClipboard('access-local-ip', 'Local IP copied')">📋</button>
+                </div>
+                <div class="ip-item">
+                    <span class="ip-label">Network IP:</span>
+                    <span id="access-network-ip" class="ip-value">-</span>
+                    <button class="copy-btn" onclick="copyToClipboard('access-network-ip', 'Network IP copied')">📋</button>
+                </div>
+                <div class="ip-item">
+                    <span class="ip-label">Local URL:</span>
+                    <span id="access-local-url" class="ip-value">http://127.0.0.1:8080</span>
+                    <button class="copy-btn" onclick="copyToClipboard('access-local-url', 'Local URL copied')">📋</button>
+                </div>
+                <div class="ip-item" id="network-url-item" style="display: none;">
+                    <span class="ip-label">Network URL:</span>
+                    <span id="access-network-url" class="ip-value">-</span>
+                    <button class="copy-btn" onclick="copyToClipboard('access-network-url', 'Network URL copied')">📋</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- LOGS -->
+        <div class="logs-section">
+            <h3>📋 Event Logs</h3>
+            <div id="logs-container" class="logs-container">Starting OxichStudio Control Interface...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // === GLOBAL VARIABLES ===
+        let serverStatus = {
+            running: false,
+            port: null,
+            pid: null,
+            startTime: null,
+            networkInfo: null
+        };
+
+        let updateInterval = null;
+
+        // === DOM ELEMENTS ===
+        const elements = {
+            // Status elements
+            statusBadge: document.getElementById('server-status-badge'),
+            serverPort: document.getElementById('server-port'),
+            serverNetworkIp: document.getElementById('server-network-ip'),
+            serverPid: document.getElementById('server-pid'),
+            serverUptime: document.getElementById('server-uptime'),
+            
+            // Control buttons
+            startBtn: document.getElementById('start-btn'),
+            stopBtn: document.getElementById('stop-btn'),
+            restartBtn: document.getElementById('restart-btn'),
+            openAppBtn: document.getElementById('open-app-btn'),
+            
+            // Configuration elements
+            portInput: document.getElementById('port-input'),
+            autoStartCheckbox: document.getElementById('auto-start'),
+            enableLanCheckbox: document.getElementById('enable-lan'),
+            saveConfigBtn: document.getElementById('save-config-btn'),
+            
+            // Access section elements
+            localIp: document.getElementById('access-local-ip'),
+            networkIp: document.getElementById('access-network-ip'),
+            accessLocalUrl: document.getElementById('access-local-url'),
+            accessNetworkUrl: document.getElementById('access-network-url'),
+            networkUrlItem: document.getElementById('network-url-item'),
+            
+            // Logs
+            logsContainer: document.getElementById('logs-container'),
+            
+            // Messages
+            messagesContainer: document.getElementById('messages-container')
+        };
+
+        // === UTILITY FUNCTIONS ===
+        
+        // Copy to clipboard
+        function copyToClipboard(elementId, successMessage) {
+            const element = document.getElementById(elementId);
+            const text = element.textContent;
+            
+            navigator.clipboard.writeText(text).then(() => {
+                showMessage('success', successMessage);
+            }).catch(() => {
+                showMessage('error', 'Unable to copy to clipboard. Please select and copy manually.');
+            });
+        }
+
+        // Set button loading state
+        function setButtonLoading(button, isLoading) {
+            if (isLoading) {
+                // Store original text if not already stored
+                if (!button.dataset.originalText) {
+                    button.dataset.originalText = button.innerHTML;
+                }
+                button.innerHTML = '<span class="loading"></span> Processing...';
+                button.disabled = true;
+            } else {
+                // Restore original text
+                if (button.dataset.originalText) {
+                    button.innerHTML = button.dataset.originalText;
+                    delete button.dataset.originalText;
+                    
+                    // Force DOM update
+                    button.style.display = 'none';
+                    button.offsetHeight; // Trigger reflow
+                    button.style.display = '';
+                }
+                button.disabled = false;
+            }
+        }
+
+        // Enhanced message display with better formatting
+        function showMessage(type, text, details = null) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message message-${type}`;
+            
+            // Create main message
+            const mainText = document.createElement('div');
+            mainText.textContent = text;
+            mainText.style.fontWeight = '600';
+            messageDiv.appendChild(mainText);
+            
+            // Add details if provided
+            if (details) {
+                const detailsText = document.createElement('div');
+                detailsText.textContent = details;
+                detailsText.style.fontSize = '13px';
+                detailsText.style.marginTop = '5px';
+                detailsText.style.opacity = '0.9';
+                messageDiv.appendChild(detailsText);
+            }
+            
+            elements.messagesContainer.appendChild(messageDiv);
+            
+            // Auto remove after 8 seconds (longer for users to read)
+            setTimeout(() => {
+                if (messageDiv.parentNode) {
+                    messageDiv.parentNode.removeChild(messageDiv);
+                }
+            }, 8000);
+        }
+
+        // Enhanced logging with user-friendly messages
+        function addLog(message, isError = false) {
+            const timestamp = new Date().toLocaleTimeString();
+            const icon = isError ? '❌' : '📝';
+            const logLine = `[${timestamp}] ${icon} ${message}\n`;
+            elements.logsContainer.textContent += logLine;
+            elements.logsContainer.scrollTop = elements.logsContainer.scrollHeight;
+        }
+
+        // User-friendly error handler
+        function handleError(error, context = '') {
+            console.error('OxichStudio Error:', error);
+            
+            let userMessage = '';
+            let details = '';
+            let suggestions = [];
+
+            // Parse error and provide user-friendly messages
+            if (error.message) {
+                const errorMsg = error.message.toLowerCase();
+                
+                if (errorMsg.includes('port') && errorMsg.includes('occupied')) {
+                    userMessage = 'Port is already in use';
+                    details = 'Another application is using this port. Try a different port number.';
+                    suggestions = error.suggestions ? error.suggestions.map(p => `Try port ${p}`) : ['Try port 8081', 'Try port 8082', 'Try port 3000'];
+                }
+                else if (errorMsg.includes('eaddrinuse')) {
+                    userMessage = 'Port conflict detected';
+                    details = 'The selected port is already being used by another program.';
+                    suggestions = ['Close other applications using this port', 'Choose a different port number', 'Restart your computer to free up ports'];
+                }
+                else if (errorMsg.includes('permission') || errorMsg.includes('access denied')) {
+                    userMessage = 'Permission denied';
+                    details = 'OxichStudio needs permission to start the server.';
+                    suggestions = ['Run OxichStudio as administrator', 'Check your antivirus settings', 'Try a different port number (above 1024)'];
+                }
+                else if (errorMsg.includes('network') || errorMsg.includes('connection')) {
+                    userMessage = 'Network connection issue';
+                    details = 'Unable to establish network connection for the server.';
+                    suggestions = ['Check your internet connection', 'Disable VPN temporarily', 'Check firewall settings'];
+                }
+                else if (errorMsg.includes('timeout')) {
+                    userMessage = 'Server startup timeout';
+                    details = 'The server is taking too long to start.';
+                    suggestions = ['Wait a moment and try again', 'Check if antivirus is blocking the application', 'Restart OxichStudio'];
+                }
+                else if (errorMsg.includes('file') || errorMsg.includes('path')) {
+                    userMessage = 'Application file issue';
+                    details = 'Some OxichStudio files may be missing or corrupted.';
+                    suggestions = ['Reinstall OxichStudio', 'Check if files were moved or deleted', 'Run as administrator'];
+                }
+                else if (errorMsg.includes('config')) {
+                    userMessage = 'Configuration error';
+                    details = 'There\'s an issue with the application settings.';
+                    suggestions = ['Reset settings to default', 'Check port number (1000-65535)', 'Restart the application'];
+                }
+                else {
+                    userMessage = 'Unexpected error occurred';
+                    details = error.message;
+                    suggestions = ['Try restarting the operation', 'Restart OxichStudio', 'Check if antivirus is interfering'];
+                }
+            } else {
+                userMessage = 'Unknown error occurred';
+                details = 'An unexpected error happened.';
+                suggestions = ['Try again', 'Restart OxichStudio', 'Check system resources'];
+            }
+
+            // Show user-friendly error message
+            showMessage('error', userMessage, details);
+            
+            // Add detailed log entry
+            addLog(`${context ? context + ': ' : ''}${userMessage} - ${details}`, true);
+            
+            // Add suggestions to log
+            if (suggestions.length > 0) {
+                addLog(`💡 Suggestions: ${suggestions.join(' • ')}`);
+            }
+
+            return { userMessage, details, suggestions };
+        }
+
+        // Enhanced success messages
+        function showSuccess(message, details = null) {
+            showMessage('success', message, details);
+            addLog(`✅ ${message}${details ? ' - ' + details : ''}`);
+        }
+
+        // Enhanced info messages
+        function showInfo(message, details = null) {
+            showMessage('info', message, details);
+            addLog(`ℹ️ ${message}${details ? ' - ' + details : ''}`);
+        }
+
+        // Update UI
+        function updateUI() {
+            // Status badge
+            elements.statusBadge.textContent = serverStatus.running ? 'Online' : 'Stopped';
+            elements.statusBadge.className = `status-badge ${serverStatus.running ? 'status-running' : 'status-stopped'}`;
+            
+            // Server info in status card
+            elements.serverPort.textContent = serverStatus.port || '-';
+            elements.serverNetworkIp.textContent = (serverStatus.networkInfo && serverStatus.networkInfo.networkIP) ? serverStatus.networkInfo.networkIP : '-';
+            elements.serverPid.textContent = serverStatus.pid || '-';
+            
+            // Server Access Section - Update IPs and URLs
+            if (serverStatus.networkInfo) {
+                const port = serverStatus.port || 8080;
+                const localIP = serverStatus.networkInfo.localIP || '127.0.0.1';
+                const networkIP = serverStatus.networkInfo.networkIP;
+                const enableLan = elements.enableLanCheckbox.checked;
+                
+                // Update local IP
+                elements.localIp.textContent = localIP;
+                elements.accessLocalUrl.textContent = `http://${localIP}:${port}`;
+                
+                // Update network IP and URL
+                if (enableLan && networkIP) {
+                    elements.networkIp.textContent = networkIP;
+                    elements.networkIp.style.color = '#48bb78'; // Green for active
+                    
+                    elements.accessNetworkUrl.textContent = `http://${networkIP}:${port}`;
+                    elements.networkUrlItem.style.display = 'flex'; // Show network URL line
+                } else {
+                    elements.networkIp.textContent = enableLan ? '-' : 'Disabled';
+                    elements.networkIp.style.color = enableLan ? '#718096' : '#e53e3e'; // Gray or red
+                    elements.networkUrlItem.style.display = 'none'; // Hide network URL line
+                }
+            } else {
+                // Default values if no network info
+                elements.localIp.textContent = '127.0.0.1';
+                elements.accessLocalUrl.textContent = `http://127.0.0.1:${serverStatus.port || 8080}`;
+                elements.networkIp.textContent = '-';
+                elements.networkUrlItem.style.display = 'none';
+            }
+            
+            // Uptime
+            if (serverStatus.running && serverStatus.startTime) {
+                const uptime = Math.floor((Date.now() - serverStatus.startTime) / 1000);
+                const minutes = Math.floor(uptime / 60);
+                const seconds = uptime % 60;
+                elements.serverUptime.textContent = `${minutes}m ${seconds}s`;
+            } else {
+                elements.serverUptime.textContent = '-';
+            }
+            
+            // Buttons state - only update if not in loading state
+            if (!elements.startBtn.dataset.originalText) {
+                elements.startBtn.disabled = serverStatus.running;
+            }
+            if (!elements.stopBtn.dataset.originalText) {
+                elements.stopBtn.disabled = !serverStatus.running;
+            }
+            if (!elements.restartBtn.dataset.originalText) {
+                elements.restartBtn.disabled = !serverStatus.running;
+            }
+            if (!elements.openAppBtn.dataset.originalText) {
+                elements.openAppBtn.disabled = !serverStatus.running;
+            }
+        }
+
+        // === EVENT HANDLERS ===
+        
+        // Start server
+        elements.startBtn.addEventListener('click', async () => {
+            try {
+                setButtonLoading(elements.startBtn, true);
+                addLog('🚀 Starting OxichStudio server...');
+                
+                const enableLan = elements.enableLanCheckbox.checked;
+                const port = parseInt(elements.portInput.value);
+                
+                // Validate port number
+                if (!port || port < 1000 || port > 65535) {
+                    throw new Error('Invalid port number. Please use a port between 1000 and 65535.');
+                }
+                
+                const config = {
+                    port: port,
+                    enableLan: enableLan
+                };
+                
+                showInfo('Starting server...', `Port ${port} • ${enableLan ? 'Network access enabled' : 'Local access only'}`);
+                
+                // Add timeout to prevent infinite loading
+                const startPromise = window.electronAPI.server.start(config);
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Server start operation timed out after 45 seconds')), 45000);
+                });
+                
+                const result = await Promise.race([startPromise, timeoutPromise]);
+                
+                if (result.success) {
+                    const accessMode = enableLan ? 'available on local network' : 'local access only';
+                    showSuccess('Server started successfully', `Running on port ${port} • ${accessMode}`);
+                    addLog(`✅ Server started on port ${port} - Access: ${accessMode}`);
+                    
+                    serverStatus.running = true;
+                    serverStatus.port = config.port;
+                    serverStatus.startTime = Date.now();
+                    
+                    // Reset button loading first, then update UI
+                    setButtonLoading(elements.startBtn, false);
+                    updateUI();
+                    
+                    // Refresh network information
+                    setTimeout(async () => {
+                        try {
+                        const status = await window.electronAPI.server.getStatus();
+                        if (status && status.networkInfo) {
+                            serverStatus.networkInfo = status.networkInfo;
+                            updateUI();
+                                addLog(`🌐 Network info updated - Local: ${status.networkInfo.localIP}`);
+                            }
+                        } catch (error) {
+                            addLog('⚠️ Could not refresh network information', true);
+                        }
+                    }, 1000);
+                } else {
+                    throw new Error(result.error || 'Server failed to start');
+                }
+            } catch (error) {
+                handleError(error, 'Server startup');
+            } finally {
+                // Always reset button loading state
+                setButtonLoading(elements.startBtn, false);
+                updateUI();
+            }
+        });
+
+        // Stop server
+        elements.stopBtn.addEventListener('click', async () => {
+            try {
+                setButtonLoading(elements.stopBtn, true);
+                addLog('🛑 Stopping OxichStudio server...');
+                showInfo('Stopping server...', 'Please wait while the server shuts down');
+                
+                const result = await window.electronAPI.server.stop();
+                
+                if (result.success) {
+                    showSuccess('Server stopped successfully', 'The server has been shut down cleanly');
+                    addLog('✅ Server stopped successfully');
+                    
+                    serverStatus.running = false;
+                    serverStatus.startTime = null;
+                } else {
+                    addLog('⚠️ Stop operation completed with warnings');
+                    showSuccess('Server stopped', 'The server has been stopped');
+                    
+                    serverStatus.running = false;
+                    serverStatus.startTime = null;
+                }
+            } catch (error) {
+                handleError(error, 'Server stop');
+            } finally {
+                setButtonLoading(elements.stopBtn, false);
+                updateUI();
+            }
+        });
+
+        // Restart server
+        elements.restartBtn.addEventListener('click', async () => {
+            try {
+                setButtonLoading(elements.restartBtn, true);
+                addLog('🔄 Restarting OxichStudio server...');
+                showInfo('Restarting server...', 'Please wait while the server restarts');
+                
+                // Stop first
+                const stopResult = await window.electronAPI.server.stop();
+                if (!stopResult.success) {
+                    addLog('⚠️ Warning: Stop operation reported issues, continuing with restart');
+                }
+                
+                // Wait a moment before starting
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                // Start with current configuration
+                const enableLan = elements.enableLanCheckbox.checked;
+                const port = parseInt(elements.portInput.value);
+                
+                const config = {
+                    port: port,
+                    enableLan: enableLan
+                };
+                
+                const startResult = await window.electronAPI.server.start(config);
+                
+                if (startResult.success) {
+                    const accessMode = enableLan ? 'available on local network' : 'local access only';
+                    showSuccess('Server restarted successfully', `Running on port ${port} • ${accessMode}`);
+                    addLog(`✅ Server restarted on port ${port} - Access: ${accessMode}`);
+                    
+                    serverStatus.running = true;
+                    serverStatus.port = port;
+                    serverStatus.startTime = Date.now();
+                } else {
+                    throw new Error(startResult.error || 'Restart failed during startup phase');
+                }
+            } catch (error) {
+                handleError(error, 'Server restart');
+            } finally {
+                setButtonLoading(elements.restartBtn, false);
+                updateUI();
+            }
+        });
+
+        // Open application
+        elements.openAppBtn.addEventListener('click', async () => {
+            try {
+                // Try to use detected local IP, then fallback to localhost and 127.0.0.1
+                let localAddress = '127.0.0.1'; // Default fallback
+                
+                if (serverStatus.networkInfo && serverStatus.networkInfo.localIP) {
+                    localAddress = serverStatus.networkInfo.localIP;
+                }
+                
+                const url = `http://${localAddress}:${serverStatus.port || 8080}`;
+                addLog(`🌐 Opening OxichStudio application: ${url}`);
+                showInfo('Opening application...', `Launching in default browser: ${url}`);
+                
+                // Use the improved IPC handler
+                const result = await window.electronAPI.utils.openExternal(url);
+                
+                if (!result.success) {
+                    throw new Error(result.error || 'Failed to open application');
+                }
+                
+                showSuccess('Application opened', 'OxichStudio is now running in your default browser');
+                
+            } catch (error) {
+                handleError(error, 'Opening application');
+            }
+        });
+
+        // Save configuration
+        elements.saveConfigBtn.addEventListener('click', async () => {
+            try {
+                setButtonLoading(elements.saveConfigBtn, true);
+                showInfo('Saving configuration...', 'Please wait while settings are saved');
+                
+                const enableLan = elements.enableLanCheckbox.checked;
+                const port = parseInt(elements.portInput.value);
+                const autoStart = elements.autoStartCheckbox.checked;
+                
+                // Validate port number
+                if (!port || port < 1000 || port > 65535) {
+                    throw new Error('Invalid port number. Please use a port between 1000 and 65535.');
+                }
+                
+                // Save configuration
+                await window.electronAPI.config.set('server.port', port);
+                await window.electronAPI.config.set('server.enableLan', enableLan);
+                await window.electronAPI.config.set('server.autoStart', autoStart);
+                
+                const accessMode = enableLan ? 'Network access enabled' : 'Local access only';
+                const autoStartText = autoStart ? 'Auto-start enabled' : 'Manual start required';
+                
+                showSuccess('Configuration saved successfully', `Port ${port} • ${accessMode} • ${autoStartText}`);
+                addLog(`⚙️ Configuration saved: Port ${port}, Network: ${enableLan ? 'enabled' : 'disabled'}, Auto-start: ${autoStart ? 'enabled' : 'disabled'}`);
+                
+            } catch (error) {
+                handleError(error, 'Configuration save');
+            } finally {
+                setButtonLoading(elements.saveConfigBtn, false);
+                updateUI();
+            }
+        });
+
+        // === REAL-TIME FEEDBACK FOR PORT ===
+        let originalPort = null;
+        
+        // Function to check if restart will be needed
+        async function checkRestartNeeded() {
+            if (originalPort === null) return false;
+            
+            const currentPort = parseInt(elements.portInput.value);
+            
+            return currentPort !== originalPort;
+        }
+        
+        // Function to update restart indicator
+        async function updateRestartIndicator() {
+            const needsRestart = await checkRestartNeeded();
+            const isServerRunning = serverStatus.running;
+            
+            if (needsRestart && isServerRunning) {
+                // Show restart required indicator
+                elements.saveConfigBtn.innerHTML = '🔄 Save and Restart';
+                elements.saveConfigBtn.classList.add('btn-warning');
+                elements.saveConfigBtn.classList.remove('btn-primary');
+                
+                // Add small visual indicator on modified field
+                const currentPort = parseInt(elements.portInput.value);
+                
+                if (currentPort !== originalPort) {
+                    elements.portInput.style.borderColor = '#f6ad55';
+                    elements.portInput.style.backgroundColor = '#fffaf0';
+                } else {
+                    elements.portInput.style.borderColor = '';
+                    elements.portInput.style.backgroundColor = '';
+                }
+                
+            } else {
+                // Return to normal button
+                elements.saveConfigBtn.innerHTML = '💾 Save';
+                elements.saveConfigBtn.classList.remove('btn-warning');
+                elements.saveConfigBtn.classList.add('btn-primary');
+                
+                // Return field to normal
+                elements.portInput.style.borderColor = '';
+                elements.portInput.style.backgroundColor = '';
+            }
+        }
+        
+        // Listen for port changes
+        elements.portInput.addEventListener('input', async () => {
+            // Port validation
+            const port = parseInt(elements.portInput.value);
+            if (port < 1000 || port > 65535) {
+                elements.portInput.style.borderColor = '#e53e3e';
+                elements.portInput.style.backgroundColor = '#fff5f5';
+                if (port !== 0 && !isNaN(port)) { // Don't show message if field is empty
+                    showMessage('error', 'Port must be between 1000 and 65535');
+                }
+            } else {
+                await updateRestartIndicator();
+            }
+        });
+
+        // === INITIALIZATION ===
+        
+        async function init() {
+            try {
+                addLog('Initializing OxichStudio interface...');
+                
+                // Load configuration
+                const port = await window.electronAPI.config.get('server.port', 8080);
+                const autoStart = await window.electronAPI.config.get('server.autoStart', false);
+                const enableLan = await window.electronAPI.config.get('server.enableLan', false);
+                
+                // Get network information (with error handling)
+                try {
+                    if (window.electronAPI.network && window.electronAPI.network.getInfo) {
+                        const networkInfo = await window.electronAPI.network.getInfo(port, true);
+                        if (networkInfo) {
+                            // Use new elements from server access section
+                            elements.localIp.textContent = networkInfo.localIP || '127.0.0.1';
+                            elements.networkIp.textContent = networkInfo.networkIP || '-';
+                            
+                            // Update URLs
+                            elements.accessLocalUrl.textContent = `http://${networkInfo.localIP || '127.0.0.1'}:${port}`;
+                            if (networkInfo.networkIP) {
+                                elements.accessNetworkUrl.textContent = `http://${networkInfo.networkIP}:${port}`;
+                                elements.networkUrlItem.style.display = 'flex';
+                            } else {
+                                elements.networkUrlItem.style.display = 'none';
+                            }
+                        }
+                    } else {
+                        addLog('⚠️ Network API not available, using defaults');
+                        elements.localIp.textContent = '127.0.0.1';
+                        elements.accessLocalUrl.textContent = `http://127.0.0.1:${port}`;
+                        elements.networkUrlItem.style.display = 'none';
+                    }
+                } catch (networkError) {
+                    addLog(`⚠️ Network info error: ${networkError.message}`);
+                    // Set default values
+                    elements.localIp.textContent = '127.0.0.1';
+                    elements.accessLocalUrl.textContent = `http://127.0.0.1:${port}`;
+                    elements.networkUrlItem.style.display = 'none';
+                }
+                
+                // Assign values to elements
+                elements.portInput.value = port;
+                
+                // Store original values for real-time feedback
+                originalPort = port;
+                
+                // Ensure checkboxes reflect correct state
+                const autoStartBoolean = Boolean(autoStart);
+                const enableLanBoolean = Boolean(enableLan);
+                
+                elements.autoStartCheckbox.checked = autoStartBoolean;
+                elements.enableLanCheckbox.checked = enableLanBoolean;
+                
+                // Force visual update of checkboxes
+                if (autoStartBoolean) {
+                    elements.autoStartCheckbox.setAttribute('checked', 'checked');
+                } else {
+                    elements.autoStartCheckbox.removeAttribute('checked');
+                }
+                
+                if (enableLanBoolean) {
+                    elements.enableLanCheckbox.setAttribute('checked', 'checked');
+                } else {
+                    elements.enableLanCheckbox.removeAttribute('checked');
+                }
+                
+                // Load server status
+                const status = await window.electronAPI.server.getStatus();
+                if (status) {
+                    serverStatus = {
+                        ...serverStatus,
+                        ...status,
+                        startTime: status.running ? Date.now() : null
+                    };
+                }
+                
+                updateUI();
+                addLog('✅ OxichStudio interface ready');
+                
+                // Initialize restart indicator
+                setTimeout(() => {
+                    updateRestartIndicator();
+                }, 100);
+                
+                // Start automatic update
+                updateInterval = setInterval(async () => {
+                    try {
+                        const status = await window.electronAPI.server.getStatus();
+                        if (status) {
+                            const wasRunning = serverStatus.running;
+                            serverStatus = { ...serverStatus, ...status };
+                            
+                            if (status.running && !wasRunning) {
+                                serverStatus.startTime = Date.now();
+                            } else if (!status.running && wasRunning) {
+                                serverStatus.startTime = null;
+                            }
+                            
+                            // Also update network information in config
+                            if (status.networkInfo) {
+                                elements.localIp.textContent = status.networkInfo.localIP || '127.0.0.1';
+                                elements.networkIp.textContent = status.networkInfo.networkIP || '-';
+                            }
+                            
+                            updateUI();
+                        }
+                    } catch (error) {
+                        console.error('Status update error:', error);
+                    }
+                }, 2000);
+                
+            } catch (error) {
+                addLog(`❌ Initialization error: ${error.message}`, true);
+                showMessage('error', 'Interface initialization error', 'Some features may not work properly. Please restart the application.');
+                console.error('Full initialization error:', error);
+            }
+        }
+
+        // Start when Electron is ready
+        if (window.electronAPI) {
+            init();
+        } else {
+            window.addEventListener('DOMContentLoaded', init);
+        }
+
+        // Cleanup on close
+        window.addEventListener('beforeunload', () => {
+            if (updateInterval) {
+                clearInterval(updateInterval);
+            }
+        });
+    </script>
+</body>
+</html>

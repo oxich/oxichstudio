@@ -1,0 +1,164 @@
+name: 💡 Feature Request
+description: Suggest a new feature or enhancement for the Electron + Next.js boilerplate
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a new feature! Your ideas help make this boilerplate better.
+        
+        **Before submitting**: Please search existing issues to avoid duplicates.
+
+  - type: dropdown
+    id: feature-type
+    attributes:
+      label: Feature Type
+      description: What type of feature are you requesting?
+      options:
+        - Electron Infrastructure Enhancement
+        - Next.js Integration Improvement  
+        - Development Experience (DX) Enhancement
+        - Performance Optimization
+        - Security Enhancement
+        - Documentation Improvement
+        - Testing & Quality Assurance
+        - Build & Packaging Enhancement
+        - User Interface (Control Panel) Enhancement
+        - Other (please specify below)
+    validations:
+      required: true
+
+  - type: textarea
+    id: feature-summary
+    attributes:
+      label: Feature Summary
+      description: Provide a brief, clear summary of the feature you're requesting
+      placeholder: A concise description of what you want to see added...
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem-statement
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve? What pain point does it address?
+      placeholder: |
+        Current situation:
+        - What's difficult or impossible right now?
+        - What workflow is inefficient?
+        - What's missing that users need?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Solution
+      description: Describe how you envision this feature working
+      placeholder: |
+        Detailed description of the solution:
+        - How should it work?
+        - What should the user experience be?
+        - How should it integrate with existing features?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternative-solutions
+    attributes:
+      label: Alternative Solutions
+      description: Have you considered any alternative approaches?
+      placeholder: |
+        Other ways this could be implemented:
+        - Alternative approaches considered
+        - Why the proposed solution is preferred
+        - Trade-offs between different approaches
+
+  - type: dropdown
+    id: user-impact
+    attributes:
+      label: User Impact
+      description: Who would benefit from this feature?
+      options:
+        - End Users (using main branch to create apps)
+        - Contributors (using dev branch to improve infrastructure)
+        - Both End Users and Contributors
+        - Maintainers and Project Administrators
+        - Third-party integrators
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority Level
+      description: How important is this feature to you?
+      options:
+        - Low - Nice to have
+        - Medium - Would significantly improve workflow
+        - High - Blocking current work or major pain point
+        - Critical - Essential for project viability
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-cases
+    attributes:
+      label: Use Cases
+      description: Provide specific examples of how this feature would be used
+      placeholder: |
+        Example scenarios:
+        1. User wants to...
+        2. Developer needs to...
+        3. In situation X, this would enable...
+
+  - type: textarea
+    id: technical-considerations
+    attributes:
+      label: Technical Considerations
+      description: Any technical thoughts about implementation?
+      placeholder: |
+        - Implementation complexity
+        - Performance implications
+        - Compatibility concerns
+        - Dependencies required
+        - Potential breaking changes
+
+  - type: checkboxes
+    id: implementation-help
+    attributes:
+      label: Implementation
+      description: Are you willing to help implement this feature?
+      options:
+        - label: I can help with design/specification
+        - label: I can help with implementation
+        - label: I can help with testing
+        - label: I can help with documentation
+        - label: I'm willing to provide feedback during development
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Any other information that might be helpful
+      placeholder: |
+        - Links to similar features in other projects
+        - Screenshots or mockups
+        - Related issues or discussions
+        - External resources or documentation
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      description: Please confirm the following
+      options:
+        - label: I have searched existing issues to make sure this is not a duplicate
+          required: true
+        - label: This feature request is specific and actionable
+          required: true
+        - label: I have provided sufficient detail for evaluation
+          required: true 

@@ -1,0 +1,138 @@
+name: ❓ Question
+description: Ask a question about using or contributing to the boilerplate
+title: "[Question]: "
+labels: ["question", "needs-triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a question? We're here to help! 
+        
+        **Before asking**: Please check if your question is already answered in the documentation:
+        - [Main Branch README](https://github.com/yourusername/electron-nextjs-boilerplate/tree/main) - For using the boilerplate
+        - [Dev Branch README](https://github.com/yourusername/electron-nextjs-boilerplate/tree/dev) - For contributing
+        - [Documentation](https://github.com/yourusername/electron-nextjs-boilerplate/tree/main/docs) - Complete guides
+
+  - type: dropdown
+    id: question-category
+    attributes:
+      label: Question Category
+      description: What is your question about?
+      options:
+        - Getting Started / Setup
+        - Next.js Development
+        - Electron Configuration
+        - Building / Packaging
+        - Troubleshooting
+        - Performance / Optimization
+        - Contributing / Development
+        - Architecture / Technical Design
+        - Best Practices
+        - Use Cases / Examples
+        - Integration with Other Tools
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: user-type
+    attributes:
+      label: User Type
+      description: How are you using this boilerplate?
+      options:
+        - I'm using the main branch to create desktop apps
+        - I'm using the dev branch to contribute
+        - I'm evaluating this boilerplate for my project
+        - I'm learning about Electron + Next.js
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question
+      description: What would you like to know?
+      placeholder: Please be as specific as possible...
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context & Background
+      description: Help us understand your situation better
+      placeholder: |
+        Provide context:
+        - What are you trying to achieve?
+        - What have you tried so far?
+        - What specific challenges are you facing?
+        - What's your experience level with Electron/Next.js?
+
+  - type: textarea
+    id: current-approach
+    attributes:
+      label: What You've Tried
+      description: What approaches have you already attempted?
+      placeholder: |
+        Steps you've already taken:
+        - Documentation you've read
+        - Solutions you've attempted
+        - Error messages you've encountered
+        - Resources you've consulted
+
+  - type: dropdown
+    id: urgency
+    attributes:
+      label: Urgency
+      description: How urgently do you need help with this?
+      options:
+        - Low - Curious/learning
+        - Medium - Would help with current project
+        - High - Blocking current work
+        - Critical - Urgent deadline
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment (if relevant)
+      description: Your development environment details
+      placeholder: "Node.js version, OS, branch used, etc."
+
+  - type: textarea
+    id: expected-outcome
+    attributes:
+      label: Expected Outcome
+      description: What would a good answer look like for you?
+      placeholder: |
+        What would help you:
+        - Code examples
+        - Step-by-step instructions
+        - Conceptual explanation
+        - Links to resources
+        - Alternative approaches
+
+  - type: checkboxes
+    id: research-done
+    attributes:
+      label: Research Done
+      description: Please confirm you've done some research first
+      options:
+        - label: I have searched existing issues and discussions
+          required: true
+        - label: I have read the relevant documentation
+          required: true
+        - label: I have tried to solve this myself first
+
+  - type: textarea
+    id: additional-info
+    attributes:
+      label: Additional Information
+      description: Anything else that might be relevant?
+      placeholder: |
+        - Screenshots or code snippets
+        - Links to related resources
+        - Specific use case details
+        - Timeline constraints 

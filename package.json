@@ -1,0 +1,97 @@
+{
+  "name": "oxichstudio",
+  "version": "2.0.0",
+  "description": "OxichStudio - Professional Standalone Web Server Development Platform",
+  "main": "electron/main.js",
+  "private": true,
+  "homepage": "https://github.com/oxich/oxichstudio#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/oxich/oxichstudio.git"
+  },
+  "bugs": {
+    "url": "https://github.com/oxich/oxichstudio/issues"
+  },
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "next:build": "next build && npm run copy:assets",
+    "copy:assets": "npm run copy:public && npm run copy:static",
+    "copy:public": "xcopy public .next\\standalone\\ /E /I /Y || cp -r public .next/standalone/ || true",
+    "copy:static": "xcopy .next\\static .next\\standalone\\.next\\static\\ /E /I /Y || cp -r .next/static .next/standalone/.next/static/ || true",
+    "electron:dev": "npm run next:build && electron .",
+    
+    
+    "build": "npm run next:build:standalone && electron-builder",
+    "benchmark": "node scripts/benchmark.js",
+    "benchmark:quick": "node scripts/benchmark-quick.js",
+    "test": "echo \"No tests yet\"",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "15.3.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "concurrently": "^9.1.2",
+    "critters": "^0.0.23",
+    "cross-env": "^7.0.3",
+    "electron": "^36.0.0",
+    "electron-builder": "^26.0.12",
+    "eslint": "^9",
+    "eslint-config-next": "15.3.3",
+    "jest": "^29.7.0",
+    "tailwindcss": "^4",
+    "ts-jest": "^29.3.4",
+    "typescript": "^5",
+    "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "com.oxichstudio.platform",
+    "productName": "OxichStudio",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "!electron/utils/logs/**/*",
+      "!**/*.{md,txt,log}"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": ".next/standalone",
+        "filter": "**/*"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "src/app/favicon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "keywords": [
+    "electron",
+    "nextjs",
+    "desktop",
+    "server",
+    "standalone",
+    "web-development",
+    "platform",
+    "windows",
+    "typescript",
+    "react"
+  ],
+  "author": "Jamal Eddine Naaman",
+  "license": "MIT"
+}
