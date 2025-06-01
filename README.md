@@ -13,7 +13,7 @@ OxichStudio enables you to:
 - **🖥️ Control** via professional desktop interface built with Electron
 - **📦 Deploy** as standalone executables with embedded web server
 - **🌐 Share** on local networks with intelligent IP detection
-- **⚡ Deliver** to end users as single `.exe` files
+- **⚡ Deliver** to end users as single standalone executable files
 
 **Perfect for:** Business applications, local servers, development tools, network utilities
 
@@ -32,7 +32,7 @@ npm run dev            # Next.js development server
 npm run electron:dev   # Test desktop controller
 
 # Build for production
-npm run build          # Create .exe for distribution
+npm run build          # Create standalone executable for distribution
 ```
 
 **🎉 Ready!** Develop in `src/` like any Next.js app, test with desktop controller, then distribute.
@@ -65,7 +65,7 @@ npm run electron:dev
 
 # Production: Standalone executable
 npm run build
-# → Creates distributable .exe in dist/
+# → Creates distributable standalone executable in dist/
 ```
 
 ---

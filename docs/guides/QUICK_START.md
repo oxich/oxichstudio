@@ -10,7 +10,7 @@ A **professional standalone web server** application with:
 - ✅ Desktop control interface built with Electron
 - ✅ Full Next.js development environment
 - ✅ Integrated server management
-- ✅ Single `.exe` distribution for end users
+- ✅ Single distributable application for end users
 
 ---
 
@@ -201,7 +201,7 @@ Edit `package.json`:
 2. **Test regularly** - Use `npm run electron:dev`
 3. **Customize branding** - Update `package.json`
 4. **Build for production** - Use `npm run build`
-5. **Distribute to users** - Share the `.exe` file
+5. **Distribute to users** - Share the standalone executable file
 
 ---
 
