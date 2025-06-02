@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Tray, Menu, Notification } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -33,6 +33,8 @@ let fetch;
 let mainWindow = null;
 let nextJsProcess = null;
 let serverPort = 8080;
+let tray = null;
+let trayUpdateInterval = null; // Add interval for periodic tray updates
 
 // === MANAGERS ===
 let configManager = null;
@@ -153,20 +155,18 @@ function setupManagerEventListeners() {
   serverMonitor.on('server-crashed', async ({ code, signal, uptime }) => {
     const autoStart = configManager.get('server.autoStart', true);
     
-    // ✅ PREVENT auto-restart if a server is already starting
     if (nextJsProcess !== null) {
       logManager?.info('Auto-restart ignored - Server already active or starting');
+      await updateTrayMenu();
       return;
     }
     
     if (autoStart) {
       logManager?.info('Auto-restart enabled - Attempting restart');
-      
-      // ✅ WAIT longer to ensure port is freed
       setTimeout(async () => {
-        // ✅ DOUBLE CHECK that server hasn't already restarted
         if (nextJsProcess !== null) {
           logManager?.info('Auto-restart cancelled - Server already active');
+          await updateTrayMenu();
           return;
         }
         
@@ -175,10 +175,12 @@ function setupManagerEventListeners() {
           logManager?.info('Auto-restart successful');
         } catch (error) {
           logManager?.warn('Auto-restart failed', { error: error.message });
+          await updateTrayMenu();
         }
-      }, 7000); // Increase delay to 7 seconds
+      }, 7000);
     } else {
       logManager?.info('Auto-restart disabled - Server will remain stopped');
+      await updateTrayMenu();
     }
   });
 }
@@ -266,22 +268,81 @@ async function startNextJsServer() {
       });
 
       let serverStartupTimeout;
+      let healthCheckInterval;
       let isResolved = false;
 
-      // ✅ STARTUP TIMEOUT (60 seconds - increased from 30)
+      // ✅ IMPROVED STARTUP DETECTION - Use HTTP health checks instead of just stdout
+      const performStartupHealthCheck = async () => {
+        try {
+          const response = await fetch(`http://127.0.0.1:${serverPort}`, { 
+            method: 'HEAD',
+            timeout: 3000 
+          });
+          
+          if (response.ok || response.status < 500) {
+            // Server is responding - startup successful
+            if (!isResolved) {
+              clearTimeout(serverStartupTimeout);
+              if (healthCheckInterval) clearInterval(healthCheckInterval);
+              isResolved = true;
+              
+              await logManager.serverEvent('✅ OxichStudio server started successfully', { 
+                port: serverPort,
+                pid: nextJsProcess.pid,
+                uptime: '0s',
+                detectionMethod: 'HTTP health check'
+              });
+              
+              // Start monitoring
+              serverMonitor.startMonitoring(nextJsProcess.pid, serverPort);
+              
+              await updateTrayMenu();
+              
+              resolve({
+                success: true,
+                port: serverPort,
+                pid: nextJsProcess.pid,
+                hostname: hostname,
+                enableLan: enableLan
+              });
+            }
+            return true;
+          }
+        } catch (error) {
+          // Server not ready yet, continue waiting
+          return false;
+        }
+        return false;
+      };
+
+      // ✅ STARTUP TIMEOUT (30 seconds - more reasonable timeout)
       serverStartupTimeout = setTimeout(() => {
         if (!isResolved) {
           isResolved = true;
+          if (healthCheckInterval) clearInterval(healthCheckInterval);
           nextJsProcess?.kill();
           nextJsProcess = null;
           
-          const errorMsg = 'Server startup timed out after 60 seconds';
+          const errorMsg = 'Server startup timed out after 30 seconds';
           logManager.error(errorMsg, { port: serverPort });
           reject(new Error('OxichStudio is taking too long to start. This may be due to system performance or antivirus interference.'));
         }
-      }, 60000); // Increased to 60 seconds
+      }, 30000); // Reduced to 30 seconds
 
-      // ✅ STDOUT HANDLING
+      // ✅ START HEALTH CHECK POLLING AFTER A SHORT DELAY
+      setTimeout(() => {
+        if (!isResolved) {
+          healthCheckInterval = setInterval(async () => {
+            if (!isResolved) {
+              await performStartupHealthCheck();
+            } else {
+              clearInterval(healthCheckInterval);
+            }
+          }, 2000); // Check every 2 seconds
+        }
+      }, 3000); // Start health checks after 3 seconds
+
+      // ✅ STDOUT HANDLING (keep as fallback detection)
       nextJsProcess.stdout.on('data', async (data) => {
         const output = data.toString();
         
@@ -289,26 +350,47 @@ async function startNextJsServer() {
         console.log(`🔧 Next.js STDOUT: ${output.trim()}`);
         await logManager.debug('Server output', { output: output.trim() });
         
-        if (!isResolved && (output.includes('started server') || output.includes('Local:') || output.includes(`localhost:${serverPort}`))) {
-          clearTimeout(serverStartupTimeout);
-          isResolved = true;
-          
-          await logManager.serverEvent('✅ OxichStudio server started successfully', { 
-            port: serverPort,
-            pid: nextJsProcess.pid,
-            uptime: '0s'
-          });
-          
-          // Start monitoring
-          serverMonitor.startMonitoring(nextJsProcess.pid, serverPort);
-          
-          resolve({
-            success: true,
-            port: serverPort,
-            pid: nextJsProcess.pid,
-            hostname: hostname,
-            enableLan: enableLan
-          });
+        // Improved pattern matching for Next.js output
+        if (!isResolved && (
+          output.includes('started server') || 
+          output.includes('Local:') || 
+          output.includes(`localhost:${serverPort}`) ||
+          output.includes(`port ${serverPort}`) ||
+          output.includes('Ready on') ||
+          output.includes('ready -')
+        )) {
+          // Give HTTP health check a chance to confirm
+          setTimeout(async () => {
+            if (!isResolved) {
+              const isHealthy = await performStartupHealthCheck();
+              if (!isHealthy) {
+                // Fallback to stdout detection if health check fails
+                clearTimeout(serverStartupTimeout);
+                if (healthCheckInterval) clearInterval(healthCheckInterval);
+                isResolved = true;
+                
+                await logManager.serverEvent('✅ OxichStudio server started successfully', { 
+                  port: serverPort,
+                  pid: nextJsProcess.pid,
+                  uptime: '0s',
+                  detectionMethod: 'stdout parsing'
+                });
+                
+                // Start monitoring
+                serverMonitor.startMonitoring(nextJsProcess.pid, serverPort);
+                
+                await updateTrayMenu();
+                
+                resolve({
+                  success: true,
+                  port: serverPort,
+                  pid: nextJsProcess.pid,
+                  hostname: hostname,
+                  enableLan: enableLan
+                });
+              }
+            }
+          }, 1000); // Wait 1 second for HTTP check
         }
       });
 
@@ -327,6 +409,7 @@ async function startNextJsServer() {
             isResolved = true;
             nextJsProcess = null;
             
+            await updateTrayMenu();
             const error = new Error(`Port ${serverPort} is already being used by another application.`);
             error.suggestions = ['8081', '8082', '3000', '3001'];
             reject(error);
@@ -337,6 +420,7 @@ async function startNextJsServer() {
             isResolved = true;
             nextJsProcess = null;
             
+            await updateTrayMenu();
             reject(new Error('Permission denied. Try running OxichStudio as administrator or use a port number above 1024.'));
           }
         }
@@ -375,6 +459,7 @@ async function startNextJsServer() {
             userMessage = 'Server was terminated unexpectedly. This may be due to antivirus software or system security.';
           }
           
+          await updateTrayMenu();
           reject(new Error(userMessage));
         } else {
           // Normal exit after server was running
@@ -415,6 +500,7 @@ async function startNextJsServer() {
             userMessage = 'Too many files open. Please close other applications and try again.';
           }
           
+          await updateTrayMenu();
           reject(new Error(userMessage));
         }
       });
@@ -425,6 +511,7 @@ async function startNextJsServer() {
         stack: error.stack 
       });
       
+      await updateTrayMenu();
       reject(new Error('An unexpected error occurred while starting OxichStudio. Please try again or restart the application.'));
     }
   });
@@ -512,20 +599,260 @@ async function stopNextJsServer() {
     processKilled = true;
   }
   
-  // 3. Wait a bit then check shutdown
+  // 3. Wait a bit then check shutdown and update tray
   setTimeout(async () => {
     const finalStatus = await getServerStatus();
     if (finalStatus.running) {
-      await logManager.warn('Server still appears to be running', { 
+      await logManager.warn('Server still appears to be running after stop command', { 
         status: finalStatus.status 
       });
     } else {
-      await logManager.serverEvent('OxichStudio server stopped successfully');
+      await logManager.serverEvent('OxichStudio server confirmed stopped');
     }
+    await updateTrayMenu();
   }, 3000);
   
   if (processKilled) {
-    await logManager.serverEvent('Server shutdown initiated');
+    await logManager.serverEvent('Server shutdown initiated for external process');
+  }
+}
+
+// === NOTIFICATION SYSTEM ===
+function showNotification(title, body, options = {}) {
+  // Check if notifications are supported and permission is granted
+  if (!Notification.isSupported()) {
+    logManager?.debug('System notifications not supported');
+    return;
+  }
+
+  try {
+    const notification = new Notification({
+      title: title,
+      body: body,
+      icon: isPackaged 
+        ? path.join(process.resourcesPath, 'assets/icons/icon.png')
+        : path.join(__dirname, '..', 'assets', 'icons', 'icon.png'),
+      silent: options.silent || false,
+      timeoutType: options.timeoutType || 'default' // 'default', 'never'
+    });
+
+    notification.show();
+    
+    // Optional click handler
+    if (options.onClick) {
+      notification.on('click', options.onClick);
+    }
+
+    logManager?.debug('Notification shown', { title, body });
+  } catch (error) {
+    logManager?.warn('Failed to show notification', { error: error.message, title, body });
+  }
+}
+
+// === TRAY ICON ===
+// This function will now be responsible for updating the tray menu content
+async function updateTrayMenu() {
+  if (!tray) {
+    logManager?.debug('updateTrayMenu called but tray is not available.');
+    return;
+  }
+  try {
+    const serverStatus = await getServerStatus();
+    let statusLabel = 'Server: Fetching...';
+    let isServerRunning = false;
+    
+    if (serverStatus) {
+      if (serverStatus.running) {
+        statusLabel = `Server: Online (Port ${serverStatus.port})`;
+        if (serverStatus.pid === 'external') {
+          statusLabel += ' [External]';
+        }
+        isServerRunning = true;
+      } else {
+        statusLabel = 'Server: Stopped';
+        isServerRunning = false;
+      }
+    } else {
+      statusLabel = 'Server: Status Unavailable';
+    }
+
+    const contextMenuTemplate = [
+      {
+        label: statusLabel,
+        enabled: false,
+      },
+      { type: 'separator' },
+      {
+        label: 'Start Server',
+        enabled: !isServerRunning,
+        click: async () => {
+          try {
+            logManager?.info('Starting server from tray menu...');
+            
+            showNotification('OxichStudio', 'Starting server...', { silent: true });
+            
+            // Get current configuration
+            const port = configManager?.get('server.port', 8080) || 8080;
+            const enableLan = configManager?.get('server.enableLan', true);
+            
+            // Set global serverPort to match config
+            serverPort = port;
+            
+            await startNextJsServer();
+            logManager?.info('Server started successfully from tray menu');
+            
+            showNotification(
+              'OxichStudio Server Started', 
+              `Server is now running on port ${port}${enableLan ? ' (Network accessible)' : ' (Local only)'}`,
+              {
+                onClick: () => {
+                  // Open control panel when notification is clicked
+                  if (!mainWindow || mainWindow.isDestroyed()) {
+                    createMainWindow();
+                  } else {
+                    mainWindow.show();
+                    mainWindow.focus();
+                  }
+                }
+              }
+            );
+          } catch (error) {
+            logManager?.error('Failed to start server from tray menu', { error: error.message });
+            console.error('Tray menu server start failed:', error);
+            
+            showNotification(
+              'Server Start Failed', 
+              error.message || 'Failed to start the server. Check logs for details.',
+              {
+                onClick: () => {
+                  // Open control panel to show details
+                  if (!mainWindow || mainWindow.isDestroyed()) {
+                    createMainWindow();
+                  } else {
+                    mainWindow.show();
+                    mainWindow.focus();
+                  }
+                }
+              }
+            );
+          }
+        },
+      },
+      {
+        label: 'Stop Server',
+        enabled: isServerRunning,
+        click: async () => {
+          try {
+            logManager?.info('Stopping server from tray menu...');
+            
+            showNotification('OxichStudio', 'Stopping server...', { silent: true });
+            
+            await stopNextJsServer();
+            logManager?.info('Server stopped successfully from tray menu');
+            
+            showNotification('OxichStudio Server Stopped', 'Server has been stopped successfully');
+          } catch (error) {
+            logManager?.error('Failed to stop server from tray menu', { error: error.message });
+            console.error('Tray menu server stop failed:', error);
+            
+            showNotification(
+              'Server Stop Failed', 
+              'Failed to stop the server. It may have already stopped.',
+              {
+                onClick: () => {
+                  // Open control panel to check status
+                  if (!mainWindow || mainWindow.isDestroyed()) {
+                    createMainWindow();
+                  } else {
+                    mainWindow.show();
+                    mainWindow.focus();
+                  }
+                }
+              }
+            );
+          }
+        },
+      },
+      { type: 'separator' },
+      {
+        label: 'Open Control Panel',
+        click: () => {
+          if (!mainWindow || mainWindow.isDestroyed()) {
+            createMainWindow();
+          } else {
+            if (!mainWindow.isVisible()) {
+              mainWindow.show();
+            }
+            mainWindow.focus();
+          }
+        },
+      },
+      { type: 'separator' },
+      {
+        label: 'Quit OxichStudio',
+        click: () => {
+          app.quit();
+        },
+      },
+    ];
+
+    const contextMenu = Menu.buildFromTemplate(contextMenuTemplate);
+    tray.setContextMenu(contextMenu);
+    logManager?.debug('Tray menu updated.', { status: statusLabel, isRunning: isServerRunning });
+  } catch (error) {
+    logManager?.error('Failed to update tray menu.', { error: error.message, stack: error.stack });
+    console.error('Failed to update tray menu:', error);
+  }
+}
+
+async function createTray() {
+  const iconFileName = 'icon.png';
+  const iconPath = isPackaged
+    ? path.join(process.resourcesPath, 'assets/icons', iconFileName)
+    : path.join(__dirname, '..', 'assets', 'icons', iconFileName);
+
+  if (!fs.existsSync(iconPath)) {
+    logManager?.warn('Tray icon not found. Please create assets/icons/icon.png (project root) or ensure it is packaged correctly.', { path: iconPath });
+  }
+
+  try {
+    // Create the tray icon object. Tray variable is global.
+    tray = new Tray(iconPath);
+    tray.setToolTip('OxichStudio Server Controller');
+
+    // Set the initial menu
+    await updateTrayMenu();
+
+    // Start periodic updates for the tray menu (every 5 seconds)
+    trayUpdateInterval = setInterval(async () => {
+      try {
+        await updateTrayMenu();
+      } catch (error) {
+        logManager?.error('Periodic tray update failed', { error: error.message });
+      }
+    }, 5000);
+
+    tray.on('click', () => {
+      // Show the context menu when clicking the tray icon
+      tray.popUpContextMenu();
+    });
+    
+    logManager?.info('Tray icon created successfully with periodic updates.');
+    
+    // Show welcome notification
+    showNotification(
+      'OxichStudio Running', 
+      'Application is now running in the system tray. Right-click the tray icon to access controls.',
+      {
+        onClick: () => {
+          tray.popUpContextMenu();
+        }
+      }
+    );
+  } catch (error) {
+    logManager?.error('Failed to create tray icon.', { error: error.message, iconPath });
+    console.error('Failed to create tray icon:', error);
+    tray = null;
   }
 }
 
@@ -549,17 +876,14 @@ function createMainWindow() {
 
   // === INTERFACE MODE ADAPTATION ===
   if (INTERFACE_MODE === 'control') {
-    // Control mode only
     windowOptions.width = 900;
     windowOptions.height = 700;
     windowOptions.title = 'OxichStudio - Desktop Controller';
   } else if (INTERFACE_MODE === 'app') {
-    // Application mode only
     windowOptions.title = 'OxichStudio Business Application';
     windowOptions.width = 1400;
     windowOptions.height = 900;
   } else {
-    // Auto mode - adaptive
     windowOptions.title = 'OxichStudio - Desktop Controller';
   }
 
@@ -572,8 +896,35 @@ function createMainWindow() {
     mainWindow.show();
   });
 
+  // When the window is "closed" by the user (e.g., clicking X),
+  // prevent the default action (destroying the window) and hide it instead,
+  // unless the application is actually quitting.
+  mainWindow.on('close', (event) => {
+    if (app.quitting) {
+      mainWindow = null;
+    } else {
+      event.preventDefault();
+      mainWindow.hide();
+      logManager?.info('Main window hidden to tray.');
+      
+      // Show helpful notification when window is minimized to tray
+      showNotification(
+        'OxichStudio Minimized', 
+        'Application is still running in the system tray. Right-click the tray icon to access controls.',
+        { 
+          silent: true,
+          onClick: () => {
+            tray?.popUpContextMenu();
+          }
+        }
+      );
+    }
+  });
+
+  // This event fires when the window is actually destroyed.
   mainWindow.on('closed', () => {
     mainWindow = null;
+    logManager?.info('Main window instance destroyed.');
   });
 }
 
@@ -716,10 +1067,10 @@ function setupIpcHandlers() {
   });
 
   ipcMain.handle('server:start', async (event, config = null) => {
+    let responsePayload = {};
     try {
       await logManager.userAction('🚀 User requested server start', { config });
       
-      // If config parameters are provided, use them
       if (config && config.port) {
         const port = parseInt(config.port);
         if (isNaN(port) || port < 1000 || port > 65535) {
@@ -729,18 +1080,17 @@ function setupIpcHandlers() {
         await configManager.set('server.port', serverPort);
       }
       
-      // Handle LAN access with save
       if (config && config.enableLan !== undefined) {
         await configManager.set('server.enableLan', config.enableLan);
       }
       
-      const result = await startNextJsServer();
+      // Rely on startNextJsServer to call updateTrayMenu internally on its success/failure paths.
+      const result = await startNextJsServer(); 
       await logManager.userAction('✅ Server started successfully by user', { 
         port: serverPort,
         pid: result.pid 
       });
-      
-      return { 
+      responsePayload = { 
         success: true,
         port: result.port,
         pid: result.pid,
@@ -752,29 +1102,40 @@ function setupIpcHandlers() {
         error: error.message,
         config 
       });
-      
-      return { 
+      // If startNextJsServer failed before its own updateTrayMenu, or if the error
+      // originated from the config validation stage, update the tray here.
+      await updateTrayMenu(); 
+      responsePayload = { 
         success: false, 
         error: error.message,
         code: error.code,
         suggestions: error.suggestions 
       };
     }
+    // Removed 'finally' block that called updateTrayMenu
+    return responsePayload;
   });
 
   ipcMain.handle('server:stop', async () => {
+    let responsePayload = {};
     try {
       await logManager.userAction('🛑 User requested server stop');
-      await stopNextJsServer();
+      // Rely on stopNextJsServer to call updateTrayMenu internally (e.g., in its timeout).
+      await stopNextJsServer(); 
       await logManager.userAction('✅ Server stopped successfully by user');
-      return { success: true };
+      responsePayload = { success: true };
     } catch (error) {
       await logManager.userAction('❌ Server stop failed', { error: error.message });
-      return { 
+      // If stopNextJsServer failed directly (e.g., not an async error within its timeout),
+      // update the tray here.
+      await updateTrayMenu();
+      responsePayload = { 
         success: false, 
         error: 'Failed to stop the server. It may have already stopped or encountered an error.'
       };
     }
+    // Removed 'finally' block that called updateTrayMenu
+    return responsePayload;
   });
 
   // === CONFIGURATION WITH VALIDATION ===
@@ -1063,18 +1424,19 @@ function setupIpcHandlers() {
 // === APP EVENTS WITH IMPROVED ERROR HANDLING ===
 app.whenReady().then(async () => {
   try {
-    // Initialize managers
+    // Initialize managers first
     await initializeManagers();
     
-    createMainWindow();
+    // Setup IPC handlers
     setupIpcHandlers();
-    setupInterfaceHandlers();
+    
+    // Setup interface specific handlers
+    setupInterfaceHandlers(); // Ensures this is called correctly
 
-    // ✅ ALWAYS show control panel first
-    console.log('🎛️ Loading OxichStudio control interface');
-    mainWindow.loadFile(CONTROL_PANEL_PATH);
+    // Create the tray icon
+    await createTray(); // Await the async createTray
 
-    // ✅ Auto-start server if configured - CENTRALIZED LOGIC
+    // Determine autostart based on config
     const autoStart = configManager.get('server.autoStart', false);
     console.log(`🔧 AutoStart configuration: ${autoStart}`);
     
@@ -1096,6 +1458,13 @@ app.whenReady().then(async () => {
             });
           }
           
+          // Show auto-start notification
+          showNotification(
+            'OxichStudio Auto-Started', 
+            `Server automatically started on port ${serverPort}`,
+            { silent: true }
+          );
+          
         } catch (error) {
           console.log('❌ Auto-start failed:', error.message);
           
@@ -1106,6 +1475,22 @@ app.whenReady().then(async () => {
               suggestions: error.suggestions || []
             });
           }
+          
+          // Show auto-start failure notification
+          showNotification(
+            'Auto-Start Failed', 
+            error.message || 'Failed to start server automatically',
+            {
+              onClick: () => {
+                if (!mainWindow || mainWindow.isDestroyed()) {
+                  createMainWindow();
+                } else {
+                  mainWindow.show();
+                  mainWindow.focus();
+                }
+              }
+            }
+          );
           
           await logManager.warn('Auto-start failed at startup', { 
             error: error.message,
@@ -1133,9 +1518,34 @@ app.on('window-all-closed', async () => {
   }
 });
 
-app.on('before-quit', async () => {
+app.on('before-quit', async (event) => {
+  event.preventDefault(); 
+  app.quitting = true; 
+
+  console.log('🚪 OxichStudio is preparing to shut down...');
   await logManager?.info('OxichStudio application closed by user');
-  await stopNextJsServer();
+  
+  // Stop the tray update interval
+  if (trayUpdateInterval) {
+    clearInterval(trayUpdateInterval);
+    trayUpdateInterval = null;
+    logManager?.info('Tray update interval stopped.');
+  }
+  
+  // Attempt to stop the server
+  if (nextJsProcess || (await getServerStatus()).running) {
+    await logManager?.info('Stopping Next.js server before quitting...');
+    await stopNextJsServer();
+    await new Promise(resolve => setTimeout(resolve, 3500)); 
+  }
+  
+  if (tray) {
+    tray.destroy();
+    tray = null;
+    logManager?.info('Tray icon destroyed.');
+  }
+  
+  app.exit(); 
 });
 
 app.on('activate', () => {

@@ -17,24 +17,24 @@ class SecurityManager {
   }
 
   /**
-   * Initialise les configurations de sécurité
+   * Initializes security configurations
    */
   initialize() {
     this.setupCSP();
     this.setupRateLimit();
-    this.logManager?.info('SecurityManager initialisé', {
+    this.logManager?.info('Security system initialized', {
       allowedOrigins: Array.from(this.allowedOrigins),
       rateLimitEnabled: true
     });
   }
 
   /**
-   * Configure la Content Security Policy
+   * Configure the Content Security Policy
    */
   setupCSP() {
     this.cspDirectives = {
       'default-src': ["'self'"],
-      'script-src': ["'self'", "'unsafe-inline'"], // Nécessaire pour Next.js
+      'script-src': ["'self'", "'unsafe-inline'"], // Required for Next.js
       'style-src': ["'self'", "'unsafe-inline'"],
       'img-src': ["'self'", "data:", "blob:"],
       'connect-src': ["'self'", "ws://localhost:*", "ws://127.0.0.1:*"],
@@ -52,12 +52,12 @@ class SecurityManager {
   }
 
   /**
-   * Configure le système de rate limiting
+   * Configure the rate limiting system
    */
   setupRateLimit() {
     // Rate limiting configuration is already done in constructor
     // This method can be used for additional setup if needed
-    this.logManager?.info('Rate limiting configuré', {
+    this.logManager?.info('Rate limiting configured', {
       windowMs: this.rateLimitConfig.windowMs,
       maxRequests: this.rateLimitConfig.maxRequests,
       blockDuration: this.rateLimitConfig.blockDuration
@@ -65,13 +65,13 @@ class SecurityManager {
   }
 
   /**
-   * Génère l'en-tête CSP
+   * Generates the CSP header
    */
   generateCSPHeader(isDev = false) {
     const directives = { ...this.cspDirectives };
     
     if (isDev) {
-      // Assouplir les règles en développement
+      // Relax rules in development
       directives['script-src'].push("'unsafe-eval'");
       directives['connect-src'].push('ws://*');
     }
@@ -87,23 +87,23 @@ class SecurityManager {
   }
 
   /**
-   * Valide une URL pour la navigation
+   * Validates a URL for navigation
    */
   validateURL(url) {
     try {
       const parsedURL = new URL(url);
       
-      // Vérifier le protocole
+      // Check protocol
       if (!['http:', 'https:'].includes(parsedURL.protocol)) {
-        this.logManager?.warn('Tentative de navigation vers protocole non autorisé', { url, protocol: parsedURL.protocol });
+        this.logManager?.warn('Attempted navigation to unauthorized protocol', { url, protocol: parsedURL.protocol });
         return false;
       }
 
-      // Vérifier l'origine pour les URLs locales
+      // Check origin for local URLs
       if (parsedURL.hostname === 'localhost' || parsedURL.hostname === '127.0.0.1') {
         const origin = `${parsedURL.protocol}//${parsedURL.hostname}`;
         if (!this.allowedOrigins.has(origin)) {
-          this.logManager?.warn('Tentative de navigation vers origine non autorisée', { url, origin });
+          this.logManager?.warn('Attempted navigation to unauthorized origin', { url, origin });
           return false;
         }
       }
@@ -111,334 +111,273 @@ class SecurityManager {
       return true;
 
     } catch (error) {
-      this.logManager?.warn('URL invalide détectée', { url, error: error.message });
+      this.logManager?.warn('Invalid URL detected', { url, error: error.message });
       return false;
     }
   }
 
   /**
-   * Ajoute une origine autorisée
+   * Adds an allowed origin
    */
   addAllowedOrigin(origin) {
     this.allowedOrigins.add(origin);
-    this.logManager?.info('Origine autorisée ajoutée', { origin });
+    this.logManager?.info('Allowed origin added', { origin });
   }
 
   /**
-   * Supprime une origine autorisée
+   * Removes an allowed origin
    */
   removeAllowedOrigin(origin) {
     this.allowedOrigins.delete(origin);
-    this.logManager?.info('Origine autorisée supprimée', { origin });
+    this.logManager?.info('Allowed origin removed', { origin });
   }
 
   /**
-   * Valide les entrées utilisateur
+   * Validates input according to type and constraints
    */
-  validateInput(input, type = 'string', options = {}) {
-    if (input === null || input === undefined) {
-      return { valid: false, error: 'Valeur requise' };
-    }
-
-    switch (type) {
-      case 'port':
-        return this.validatePort(input);
-      case 'hostname':
-        return this.validateHostname(input);
-      case 'string':
-        return this.validateString(input, options);
-      case 'number':
-        return this.validateNumber(input, options);
-      case 'boolean':
-        return this.validateBoolean(input);
-      default:
-        return { valid: false, error: 'Type de validation non supporté' };
+  validateInput(input, type, options = {}) {
+    try {
+      switch (type) {
+        case 'port':
+          return this.validatePort(input, options);
+        case 'url':
+          return this.validateURL(input, options);
+        case 'path':
+          return this.validatePath(input, options);
+        case 'string':
+          return this.validateString(input, options);
+        case 'number':
+          return this.validateNumber(input, options);
+        case 'boolean':
+          return this.validateBoolean(input, options);
+        default:
+          return { valid: false, error: 'Unknown validation type' };
+      }
+    } catch (error) {
+      this.logManager?.error('Input validation error', { type, input: typeof input }, error);
+      return { valid: false, error: 'Validation error' };
     }
   }
 
   /**
-   * Valide un numéro de port
+   * Validates port number
    */
-  validatePort(port) {
-    const numPort = parseInt(port, 10);
+  validatePort(port, options = {}) {
+    const num = Number(port);
     
-    if (isNaN(numPort)) {
-      return { valid: false, error: 'Le port doit être un nombre' };
+    if (isNaN(num) || !Number.isInteger(num)) {
+      return { valid: false, error: 'Port must be a valid integer' };
     }
     
-    if (numPort < 1 || numPort > 65535) {
-      return { valid: false, error: 'Le port doit être entre 1 et 65535' };
+    if (num < 1 || num > 65535) {
+      return { valid: false, error: 'Port must be between 1 and 65535' };
     }
-
-    // Ports réservés système (optionnel warning)
-    if (numPort < 1024) {
-      return { 
-        valid: true, 
-        warning: 'Ports inférieurs à 1024 peuvent nécessiter des privilèges administrateur',
-        value: numPort 
-      };
+    
+    if (num < 1024 && !options.allowPrivileged) {
+      return { valid: false, error: 'Privileged ports (< 1024) require special permissions' };
     }
-
-    return { valid: true, value: numPort };
+    
+    return { valid: true, value: num };
   }
 
   /**
-   * Valide un nom d'hôte
+   * Validates file path
    */
-  validateHostname(hostname) {
-    if (typeof hostname !== 'string') {
-      return { valid: false, error: 'Le hostname doit être une chaîne' };
+  validatePath(path, options = {}) {
+    if (typeof path !== 'string') {
+      return { valid: false, error: 'Path must be a string' };
     }
-
-    hostname = hostname.trim();
     
-    if (hostname.length === 0) {
-      return { valid: false, error: 'Le hostname ne peut pas être vide' };
+    // Check for dangerous characters
+    const dangerousChars = /[<>:"|?*\x00-\x1f]/;
+    if (dangerousChars.test(path)) {
+      return { valid: false, error: 'Path contains invalid characters' };
     }
-
-    // Permettre localhost, 127.0.0.1, 0.0.0.0 et IPs valides
-    const validPatterns = [
-      /^localhost$/i,
-      /^127\.0\.0\.1$/,
-      /^0\.0\.0\.0$/,
-      /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/
-    ];
-
-    const isValid = validPatterns.some(pattern => pattern.test(hostname));
     
-    if (!isValid) {
-      return { valid: false, error: 'Hostname non valide (utilisez localhost, 127.0.0.1, 0.0.0.0 ou une IP valide)' };
+    // Check for path traversal attempts
+    if (path.includes('..') || path.includes('~')) {
+      return { valid: false, error: 'Path traversal not allowed' };
     }
-
-    return { valid: true, value: hostname };
+    
+    if (options.maxLength && path.length > options.maxLength) {
+      return { valid: false, error: `Path too long (max ${options.maxLength} characters)` };
+    }
+    
+    return { valid: true, value: path };
   }
 
   /**
-   * Valide une chaîne de caractères
+   * Validates string
    */
   validateString(str, options = {}) {
     if (typeof str !== 'string') {
-      return { valid: false, error: 'Doit être une chaîne de caractères' };
+      return { valid: false, error: 'Value must be a string' };
     }
-
-    const { minLength = 0, maxLength = 1000, allowEmpty = true } = options;
-
-    if (!allowEmpty && str.trim().length === 0) {
-      return { valid: false, error: 'Ne peut pas être vide' };
-    }
-
-    if (str.length < minLength) {
-      return { valid: false, error: `Doit contenir au moins ${minLength} caractères` };
-    }
-
-    if (str.length > maxLength) {
-      return { valid: false, error: `Doit contenir au maximum ${maxLength} caractères` };
-    }
-
-    // Nettoyer la chaîne (basique)
-    const cleaned = str.replace(/[<>\"'&]/g, '');
     
-    return { valid: true, value: cleaned };
+    const maxLength = options.maxLength || this.rateLimitConfig.maxRequests;
+    if (str.length > maxLength) {
+      return { valid: false, error: `String too long (max ${maxLength} characters)` };
+    }
+    
+    if (options.minLength && str.length < options.minLength) {
+      return { valid: false, error: `String too short (min ${options.minLength} characters)` };
+    }
+    
+    // Check for dangerous patterns
+    if (options.allowHTML !== true) {
+      const htmlPattern = /<[^>]*>/;
+      if (htmlPattern.test(str)) {
+        return { valid: false, error: 'HTML content not allowed' };
+      }
+    }
+    
+    if (options.allowScripts !== true) {
+      const scriptPattern = /(javascript:|data:|vbscript:|on\w+\s*=)/i;
+      if (scriptPattern.test(str)) {
+        return { valid: false, error: 'Script content not allowed' };
+      }
+    }
+    
+    return { valid: true, value: str };
   }
 
   /**
-   * Valide un nombre
+   * Validates number
    */
   validateNumber(num, options = {}) {
-    const numValue = Number(num);
+    const value = Number(num);
     
-    if (isNaN(numValue)) {
-      return { valid: false, error: 'Doit être un nombre valide' };
+    if (isNaN(value)) {
+      return { valid: false, error: 'Value must be a valid number' };
     }
-
-    const { min, max, integer = false } = options;
-
-    if (integer && !Number.isInteger(numValue)) {
-      return { valid: false, error: 'Doit être un nombre entier' };
+    
+    if (options.integer && !Number.isInteger(value)) {
+      return { valid: false, error: 'Value must be an integer' };
     }
-
-    if (min !== undefined && numValue < min) {
-      return { valid: false, error: `Doit être supérieur ou égal à ${min}` };
+    
+    if (options.min !== undefined && value < options.min) {
+      return { valid: false, error: `Value must be at least ${options.min}` };
     }
-
-    if (max !== undefined && numValue > max) {
-      return { valid: false, error: `Doit être inférieur ou égal à ${max}` };
+    
+    if (options.max !== undefined && value > options.max) {
+      return { valid: false, error: `Value must be at most ${options.max}` };
     }
-
-    return { valid: true, value: numValue };
+    
+    return { valid: true, value: value };
   }
 
   /**
-   * Valide un booléen
+   * Validates boolean
    */
-  validateBoolean(bool) {
+  validateBoolean(bool, options = {}) {
     if (typeof bool === 'boolean') {
       return { valid: true, value: bool };
     }
-
-    if (bool === 'true' || bool === '1' || bool === 1) {
-      return { valid: true, value: true };
+    
+    if (typeof bool === 'string') {
+      const lowerStr = bool.toLowerCase();
+      if (['true', '1', 'yes', 'on'].includes(lowerStr)) {
+        return { valid: true, value: true };
+      }
+      if (['false', '0', 'no', 'off'].includes(lowerStr)) {
+        return { valid: true, value: false };
+      }
     }
-
-    if (bool === 'false' || bool === '0' || bool === 0) {
-      return { valid: true, value: false };
+    
+    if (typeof bool === 'number') {
+      if (bool === 1) return { valid: true, value: true };
+      if (bool === 0) return { valid: true, value: false };
     }
-
-    return { valid: false, error: 'Doit être un booléen valide' };
+    
+    return { valid: false, error: 'Value must be a boolean (true/false)' };
   }
 
   /**
-   * Implémente un rate limiting basique
+   * Rate limiting system
    */
-  checkRateLimit(identifier) {
+  checkRateLimit(identifier, customLimit = null) {
+    if (!this.rateLimitConfig.rateLimitEnabled) {
+      return { allowed: true, remaining: Infinity };
+    }
+    
     const now = Date.now();
-    const key = `rate_${identifier}`;
+    const limit = customLimit || this.rateLimitConfig.maxRequests;
+    const window = this.rateLimitConfig.windowMs;
     
-    // Nettoyer les entrées expirées
-    this.cleanupRateLimit(now);
+    // Clean old entries
+    this.cleanOldRateLimitEntries(now, window);
     
-    const current = this.rateLimitStore.get(key) || { count: 0, firstRequest: now, blocked: false };
+    const requests = this.rateLimitStore.get(identifier) || [];
+    const recentRequests = requests.filter(time => now - time < window);
     
-    // Vérifier si bloqué
-    if (current.blocked && (now - current.blockedAt) < this.rateLimitConfig.blockDuration) {
-      return { allowed: false, blocked: true, resetIn: this.rateLimitConfig.blockDuration - (now - current.blockedAt) };
+    // Check if blocked
+    if (this.blockedIPs.has(identifier)) {
+      return { allowed: false, remaining: 0, blocked: true };
     }
     
-    // Reset si nouvelle fenêtre
-    if (now - current.firstRequest > this.rateLimitConfig.windowMs) {
-      current.count = 0;
-      current.firstRequest = now;
-      current.blocked = false;
+    // Check limit
+    if (recentRequests.length >= limit) {
+      this.blockIP(identifier, 'Rate limit exceeded');
+      return { allowed: false, remaining: 0, rateLimited: true };
     }
     
-    current.count++;
-    
-    // Vérifier limite
-    if (current.count > this.rateLimitConfig.maxRequests) {
-      current.blocked = true;
-      current.blockedAt = now;
-      this.rateLimitStore.set(key, current);
-      
-      this.logManager?.warn('Rate limit dépassé', { 
-        identifier, 
-        count: current.count, 
-        limit: this.rateLimitConfig.maxRequests 
-      });
-      
-      return { allowed: false, blocked: true, resetIn: this.rateLimitConfig.blockDuration };
-    }
-    
-    this.rateLimitStore.set(key, current);
+    // Record request
+    recentRequests.push(now);
+    this.rateLimitStore.set(identifier, recentRequests);
     
     return { 
       allowed: true, 
-      remaining: this.rateLimitConfig.maxRequests - current.count,
-      resetIn: this.rateLimitConfig.windowMs - (now - current.firstRequest)
+      remaining: limit - recentRequests.length,
+      resetTime: now + window
     };
   }
 
   /**
-   * Nettoie les entrées de rate limiting expirées
+   * Cleans old rate limit entries
    */
-  cleanupRateLimit(now) {
-    for (const [key, data] of this.rateLimitStore.entries()) {
-      if (now - data.firstRequest > this.rateLimitConfig.windowMs * 2) {
-        this.rateLimitStore.delete(key);
+  cleanOldRateLimitEntries(now, window) {
+    const cutoff = now - (window * 2); // Keep entries for 2 windows
+    
+    for (const [identifier, requests] of this.rateLimitStore.entries()) {
+      const recentRequests = requests.filter(time => time > cutoff);
+      if (recentRequests.length === 0) {
+        this.rateLimitStore.delete(identifier);
+      } else {
+        this.rateLimitStore.set(identifier, recentRequests);
       }
     }
   }
 
   /**
-   * Génère un token CSRF
-   */
-  generateCSRFToken() {
-    const token = crypto.randomBytes(32).toString('hex');
-    const expiry = Date.now() + (60 * 60 * 1000); // 1 heure
-    
-    this.csrfTokens.set(token, { created: Date.now(), expiry });
-    
-    // Nettoyer les anciens tokens
-    this.cleanupTokens();
-    
-    return token;
-  }
-
-  /**
-   * Valide un token CSRF
-   */
-  validateCSRFToken(token) {
-    if (!token || typeof token !== 'string') {
-      return false;
-    }
-
-    const tokenData = this.csrfTokens.get(token);
-    
-    if (!tokenData) {
-      return false;
-    }
-
-    if (Date.now() > tokenData.expiry) {
-      this.csrfTokens.delete(token);
-      return false;
-    }
-
-    return true;
-  }
-
-  /**
-   * Nettoie les tokens expirés
-   */
-  cleanupTokens() {
-    const now = Date.now();
-    
-    for (const [token, data] of this.csrfTokens.entries()) {
-      if (now > data.expiry) {
-        this.csrfTokens.delete(token);
-      }
-    }
-  }
-
-  /**
-   * Génère les en-têtes de sécurité HTTP
-   */
-  getSecurityHeaders(isDev = false) {
-    return {
-      'Content-Security-Policy': this.generateCSPHeader(isDev),
-      'X-Content-Type-Options': 'nosniff',
-      'X-Frame-Options': 'DENY',
-      'X-XSS-Protection': '1; mode=block',
-      'Referrer-Policy': 'strict-origin-when-cross-origin',
-      'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
-      'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
-      'X-DNS-Prefetch-Control': 'off'
-    };
-  }
-
-  /**
-   * Bloque une adresse IP
+   * Blocks an IP address
    */
   blockIP(ip, reason = 'Security violation') {
     this.blockedIPs.add(ip);
-    this.logManager?.warn('IP bloquée', { ip, reason });
+    this.logManager?.warn('IP blocked', { ip, reason });
+    
+    // Auto-unblock after duration
+    setTimeout(() => {
+      this.unblockIP(ip);
+    }, this.rateLimitConfig.blockDuration);
   }
 
   /**
-   * Débloque une adresse IP
+   * Unblocks an IP address
    */
   unblockIP(ip) {
     this.blockedIPs.delete(ip);
-    this.logManager?.info('IP débloquée', { ip });
+    this.logManager?.info('IP unblocked', { ip });
   }
 
   /**
-   * Vérifie si une IP est bloquée
+   * Checks if an IP is blocked
    */
   isIPBlocked(ip) {
     return this.blockedIPs.has(ip);
   }
 
   /**
-   * Obtient les statistiques de sécurité
+   * Gets security statistics
    */
   getSecurityStats() {
     return {
@@ -451,21 +390,40 @@ class SecurityManager {
   }
 
   /**
-   * Réinitialise les compteurs de sécurité
+   * Resets security counters
    */
   resetSecurityCounters() {
     this.rateLimitStore.clear();
     this.csrfTokens.clear();
     this.blockedIPs.clear();
-    this.logManager?.info('Compteurs de sécurité réinitialisés');
+    this.logManager?.info('Security counters reset');
   }
 
   /**
-   * Configure le rate limiting
+   * Generates secure random token
    */
-  setRateLimitConfig(config) {
-    this.rateLimitConfig = { ...this.rateLimitConfig, ...config };
-    this.logManager?.info('Configuration rate limit mise à jour', this.rateLimitConfig);
+  generateSecureToken(length = 32) {
+    return crypto.randomBytes(length).toString('hex');
+  }
+
+  /**
+   * Hashes sensitive data
+   */
+  hashData(data, salt = null) {
+    const actualSalt = salt || crypto.randomBytes(16).toString('hex');
+    const hash = crypto.pbkdf2Sync(data, actualSalt, 10000, 64, 'sha512');
+    return {
+      hash: hash.toString('hex'),
+      salt: actualSalt
+    };
+  }
+
+  /**
+   * Verifies hashed data
+   */
+  verifyHash(data, hash, salt) {
+    const computed = crypto.pbkdf2Sync(data, salt, 10000, 64, 'sha512');
+    return computed.toString('hex') === hash;
   }
 }
 

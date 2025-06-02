@@ -9,7 +9,7 @@ class ServerMonitor extends EventEmitter {
     this.isMonitoring = false;
     this.monitorInterval = null;
     this.healthCheckInterval = 5000; // 5 seconds
-    this.defaultHealthCheckInterval = 5000; // ✅ AJOUT: Sauvegarder la valeur par défaut
+    this.defaultHealthCheckInterval = 5000; // ✅ ADDED: Save default value
     this.maxRetries = 3;
     this.retryCount = 0;
     this.serverProcess = null;
@@ -28,7 +28,7 @@ class ServerMonitor extends EventEmitter {
   }
 
   /**
-   * Démarre la surveillance du serveur
+   * Starts server monitoring
    */
   startMonitoring(serverProcess, port, hostname = 'localhost') {
     if (this.isMonitoring) {
@@ -42,32 +42,32 @@ class ServerMonitor extends EventEmitter {
     this.isMonitoring = true;
     this.retryCount = 0;
 
-    this.logManager?.info('Surveillance serveur démarrée', {
+    this.logManager?.info('Server monitoring started', {
       port,
       hostname,
       pid: serverProcess?.pid
     });
 
-    // ✅ DÉLAI initial pour laisser le serveur démarrer complètement
+    // ✅ INITIAL DELAY to let the server start completely
     setTimeout(() => {
       if (this.isMonitoring) {
-        // ✅ OPTIMISATION: Commencer avec un intervalle plus long puis se normaliser
-        this.healthCheckInterval = 10000; // Commencer avec 10 secondes
+        // ✅ OPTIMIZATION: Start with longer interval then normalize
+        this.healthCheckInterval = 10000; // Start with 10 seconds
         
-        // Démarrer les vérifications périodiques après un délai
+        // Start periodic checks after delay
         this.monitorInterval = setInterval(() => {
           this.performHealthCheck();
         }, this.healthCheckInterval);
         
-        this.logManager?.info('Health checks demarre avec intervalle initial', { 
+        this.logManager?.info('Health checks started with initial interval', { 
           port, 
           hostname,
           initialInterval: this.healthCheckInterval 
         });
       }
-    }, 8000); // 8 secondes de délai initial
+    }, 8000); // 8 seconds initial delay
 
-    // Surveillance du processus
+    // Process monitoring
     if (serverProcess) {
       serverProcess.on('exit', (code, signal) => {
         this.handleServerExit(code, signal);
@@ -82,7 +82,7 @@ class ServerMonitor extends EventEmitter {
   }
 
   /**
-   * Arrête la surveillance
+   * Stops monitoring
    */
   stopMonitoring() {
     if (!this.isMonitoring) return;
@@ -94,13 +94,13 @@ class ServerMonitor extends EventEmitter {
       this.monitorInterval = null;
     }
 
-    // ✅ CORRECTION: Message en ASCII pour éviter les problèmes d'encodage
-    this.logManager?.info('Surveillance serveur arretee');
+    // ✅ CORRECTION: ASCII message to avoid encoding issues
+    this.logManager?.info('Server monitoring stopped');
     this.emit('monitoring-stopped');
   }
 
   /**
-   * Vérifie l'état de santé du serveur
+   * Checks server health status
    */
   async performHealthCheck() {
     if (!this.isMonitoring || !this.serverPort) return;
@@ -119,31 +119,31 @@ class ServerMonitor extends EventEmitter {
         this.retryCount = 0;
         this.performanceMetrics.requestCount++;
         
-        // ✅ RÉINITIALISATION: Remettre l'intervalle normal si le serveur est redevenu sain
+        // ✅ RESET: Restore normal interval if server became healthy again
         if (this.healthCheckInterval > this.defaultHealthCheckInterval) {
-          this.healthCheckInterval = this.defaultHealthCheckInterval; // Revenir à l'intervalle par défaut
+          this.healthCheckInterval = this.defaultHealthCheckInterval; // Return to default interval
           
-          // Redémarrer l'intervalle avec la fréquence normale
+          // Restart interval with normal frequency
           if (this.monitorInterval) {
             clearInterval(this.monitorInterval);
             this.monitorInterval = setInterval(() => {
               this.performHealthCheck();
             }, this.healthCheckInterval);
             
-            this.logManager?.info('Health check intervalle normalise', {
+            this.logManager?.info('Health check interval normalized', {
               interval: this.healthCheckInterval,
               port: this.serverPort
             });
           }
         }
         
-        // Métriques du processus si disponible
+        // Process metrics if available
         if (this.serverProcess && this.serverProcess.pid) {
           try {
             const usage = process.memoryUsage();
             this.performanceMetrics.memoryUsage = usage.rss;
           } catch (error) {
-            // Ignore les erreurs de métriques
+            // Ignore metrics errors
           }
         }
 
@@ -162,7 +162,7 @@ class ServerMonitor extends EventEmitter {
   }
 
   /**
-   * Teste la connectivité du serveur
+   * Tests server connectivity
    */
   async checkServerHealth() {
     return new Promise((resolve) => {
@@ -179,7 +179,7 @@ class ServerMonitor extends EventEmitter {
       });
 
       req.on('error', (error) => {
-        this.logManager?.debug('Health check connexion refusée', {
+        this.logManager?.debug('Health check connection refused', {
           port: this.serverPort,
           error: error.code || error.message
         });
@@ -198,14 +198,14 @@ class ServerMonitor extends EventEmitter {
   }
 
   /**
-   * Gère les échecs de vérification de santé
+   * Handles health check failures
    */
   async handleHealthCheckFailure(error = null) {
     this.retryCount++;
     this.performanceMetrics.errorCount++;
 
-    // ✅ CORRECTION: Messages en ASCII pour éviter les problèmes d'encodage
-    await this.logManager?.warn('Health check echec', {
+    // ✅ CORRECTION: ASCII messages to avoid encoding issues
+    await this.logManager?.warn('Health check failed', {
       port: this.serverPort,
       retryCount: this.retryCount,
       maxRetries: this.maxRetries,
@@ -218,9 +218,9 @@ class ServerMonitor extends EventEmitter {
       error: error?.message
     });
 
-    // Si trop d'échecs consécutifs, signaler un problème critique
+    // If too many consecutive failures, report critical issue
     if (this.retryCount >= this.maxRetries) {
-      await this.logManager?.error('Serveur considere comme defaillant', {
+      await this.logManager?.error('Server considered unhealthy', {
         port: this.serverPort,
         retryCount: this.retryCount
       });
@@ -230,10 +230,10 @@ class ServerMonitor extends EventEmitter {
         metrics: this.performanceMetrics
       });
 
-      // ✅ AMÉLIORATION: Augmenter l'intervalle après échecs pour réduire le spam
-      this.healthCheckInterval = Math.min(this.healthCheckInterval * 1.5, 30000); // Max 30 secondes
+      // ✅ IMPROVEMENT: Increase interval after failures to reduce spam
+      this.healthCheckInterval = Math.min(this.healthCheckInterval * 1.5, 30000); // Max 30 seconds
       
-      // Redémarrer l'intervalle avec la nouvelle fréquence
+      // Restart interval with new frequency
       if (this.monitorInterval) {
         clearInterval(this.monitorInterval);
         this.monitorInterval = setInterval(() => {
@@ -241,17 +241,17 @@ class ServerMonitor extends EventEmitter {
         }, this.healthCheckInterval);
       }
 
-      // Reset pour éviter le spam
+      // Reset to avoid spam
       this.retryCount = 0;
     }
   }
 
   /**
-   * Gère la sortie inattendue du processus serveur
+   * Handles unexpected server process exit
    */
   async handleServerExit(code, signal) {
-    // ✅ CORRECTION: Message en ASCII pour éviter les problèmes d'encodage
-    await this.logManager?.error('Serveur termine de facon inattendue', {
+    // ✅ CORRECTION: ASCII message to avoid encoding issues
+    await this.logManager?.error('Server terminated unexpectedly', {
       code,
       signal,
       pid: this.serverProcess?.pid,
@@ -268,10 +268,10 @@ class ServerMonitor extends EventEmitter {
   }
 
   /**
-   * Gère les erreurs du processus serveur
+   * Handles server process errors
    */
   async handleServerError(error) {
-    await this.logManager?.error('Erreur processus serveur', null, error);
+    await this.logManager?.error('Server process error', null, error);
     
     this.emit('server-error', {
       error: error.message,
@@ -280,7 +280,7 @@ class ServerMonitor extends EventEmitter {
   }
 
   /**
-   * Obtient les métriques de performance actuelles
+   * Gets current performance metrics
    */
   getPerformanceMetrics() {
     return {
@@ -293,7 +293,7 @@ class ServerMonitor extends EventEmitter {
   }
 
   /**
-   * Obtient l'état détaillé du serveur
+   * Gets detailed server status
    */
   getDetailedStatus() {
     return {
@@ -309,27 +309,27 @@ class ServerMonitor extends EventEmitter {
   }
 
   /**
-   * Met à jour l'intervalle de vérification
+   * Updates health check interval
    */
   setHealthCheckInterval(interval) {
-    if (interval < 1000) interval = 1000; // Minimum 1 seconde
+    if (interval < 1000) interval = 1000; // Minimum 1 second
     if (interval > 60000) interval = 60000; // Maximum 1 minute
 
     this.healthCheckInterval = interval;
 
     if (this.isMonitoring) {
-      // Redémarrer avec le nouvel intervalle
+      // Restart with new interval
       this.stopMonitoring();
       setTimeout(() => {
         this.startMonitoring(this.serverProcess, this.serverPort, this.serverHostname);
       }, 100);
     }
 
-    this.logManager?.info('Intervalle health check modifié', { interval });
+    this.logManager?.info('Health check interval modified', { interval });
   }
 
   /**
-   * Réinitialise les compteurs de performance
+   * Resets performance counters
    */
   resetMetrics() {
     this.performanceMetrics = {
@@ -343,7 +343,7 @@ class ServerMonitor extends EventEmitter {
     this.retryCount = 0;
     this.startTime = Date.now();
 
-    this.logManager?.info('Métriques de performance réinitialisées');
+    this.logManager?.info('Performance metrics reset');
     this.emit('metrics-reset');
   }
 }

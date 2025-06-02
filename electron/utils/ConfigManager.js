@@ -21,7 +21,7 @@ class ConfigManager {
       },
       ui: {
         theme: 'light',
-        language: 'fr'
+        language: 'en'
       },
       history: {
         recentPorts: [8080, 3000, 9000]
@@ -31,27 +31,27 @@ class ConfigManager {
   }
 
   /**
-   * Initialise et charge la configuration
+   * Initializes and loads configuration
    */
   async initialize() {
     try {
       await this.loadConfig();
-      console.log('✅ Configuration chargée:', this.configPath);
+      console.log('✅ Configuration loaded:', this.configPath);
     } catch (error) {
-      console.error('❌ Erreur chargement config:', error.message);
+      console.error('❌ Config loading error:', error.message);
       await this.resetToDefault();
     }
   }
 
   /**
-   * Charge la configuration depuis le fichier
+   * Loads configuration from file
    */
   async loadConfig() {
     try {
       const configExists = await this.fileExists(this.configPath);
       
       if (!configExists) {
-        console.log('📄 Création nouvelle configuration');
+        console.log('📄 Creating new configuration');
         await this.saveConfig(this.defaultConfig);
         this.config = { ...this.defaultConfig };
         return;
@@ -60,26 +60,26 @@ class ConfigManager {
       const data = await fs.readFile(this.configPath, 'utf8');
       const loadedConfig = JSON.parse(data);
       
-      // Merge avec la config par défaut pour gérer les nouvelles clés
+      // Merge with default config to handle new keys
       this.config = this.mergeWithDefault(loadedConfig);
       
-      // Validation basique
+      // Basic validation
       this.validateConfig();
       
     } catch (error) {
-      console.warn('⚠️ Config corrompue, restauration backup');
+      console.warn('⚠️ Corrupt config, restoring backup');
       await this.restoreFromBackup();
     }
   }
 
   /**
-   * Sauvegarde la configuration
+   * Saves configuration
    */
   async saveConfig(newConfig = null) {
     try {
       const configToSave = newConfig || this.config;
       
-      // Backup avant sauvegarde
+      // Backup before save
       if (await this.fileExists(this.configPath)) {
         await this.createBackup();
       }
@@ -94,16 +94,16 @@ class ConfigManager {
         this.config = { ...newConfig };
       }
       
-      console.log('💾 Configuration sauvegardée');
+      console.log('💾 Configuration saved');
       
     } catch (error) {
-      console.error('❌ Erreur sauvegarde config:', error.message);
+      console.error('❌ Config save error:', error.message);
       throw error;
     }
   }
 
   /**
-   * Récupère une valeur de configuration
+   * Gets a configuration value
    */
   get(keyPath, defaultValue = null) {
     if (!this.config) {
@@ -125,7 +125,7 @@ class ConfigManager {
   }
 
   /**
-   * Définit une valeur de configuration
+   * Sets a configuration value
    */
   async set(keyPath, value) {
     if (!this.config) {
@@ -135,7 +135,7 @@ class ConfigManager {
     const keys = keyPath.split('.');
     let target = this.config;
     
-    // Navigue jusqu'au dernier objet
+    // Navigate to parent
     for (let i = 0; i < keys.length - 1; i++) {
       const key = keys[i];
       if (!target[key] || typeof target[key] !== 'object') {
@@ -144,15 +144,16 @@ class ConfigManager {
       target = target[key];
     }
     
-    // Définit la valeur finale
-    target[keys[keys.length - 1]] = value;
+    // Set value
+    const lastKey = keys[keys.length - 1];
+    target[lastKey] = value;
     
-    // Sauvegarde automatique
+    // Auto save
     await this.saveConfig();
   }
 
   /**
-   * Met à jour plusieurs valeurs à la fois
+   * Updates multiple values at once
    */
   async updateMultiple(updates) {
     if (!this.config) {
@@ -163,6 +164,7 @@ class ConfigManager {
       const keys = keyPath.split('.');
       let target = this.config;
       
+      // Navigate to parent
       for (let i = 0; i < keys.length - 1; i++) {
         const key = keys[i];
         if (!target[key] || typeof target[key] !== 'object') {
@@ -171,30 +173,32 @@ class ConfigManager {
         target = target[key];
       }
       
-      target[keys[keys.length - 1]] = value;
+      // Set value
+      const lastKey = keys[keys.length - 1];
+      target[lastKey] = value;
     }
     
     await this.saveConfig();
   }
 
   /**
-   * Remet la configuration par défaut
+   * Resets configuration to default
    */
   async resetToDefault() {
     this.config = { ...this.defaultConfig };
     await this.saveConfig();
-    console.log('🔄 Configuration remise par défaut');
+    console.log('🔄 Configuration reset to default');
   }
 
   /**
-   * Exporte la configuration
+   * Exports configuration
    */
   exportConfig() {
     return JSON.stringify(this.config, null, 2);
   }
 
   /**
-   * Importe une configuration
+   * Imports configuration
    */
   async importConfig(configString) {
     try {
@@ -202,15 +206,15 @@ class ConfigManager {
       const mergedConfig = this.mergeWithDefault(importedConfig);
       
       await this.saveConfig(mergedConfig);
-      console.log('📥 Configuration importée avec succès');
+      console.log('📥 Configuration imported successfully');
       
     } catch (error) {
-      console.error('❌ Erreur import config:', error.message);
-      throw new Error('Format de configuration invalide');
+      console.error('❌ Config import error:', error.message);
+      throw new Error('Invalid configuration format');
     }
   }
 
-  // === MÉTHODES PRIVÉES ===
+  // === PRIVATE METHODS ===
 
   async fileExists(filePath) {
     try {
@@ -225,7 +229,7 @@ class ConfigManager {
     try {
       await fs.copyFile(this.configPath, this.backupPath);
     } catch (error) {
-      console.warn('⚠️ Impossible de créer backup:', error.message);
+      console.warn('⚠️ Cannot create backup:', error.message);
     }
   }
 
@@ -238,13 +242,13 @@ class ConfigManager {
         const backupConfig = JSON.parse(backupData);
         this.config = this.mergeWithDefault(backupConfig);
         await this.saveConfig();
-        console.log('🔄 Configuration restaurée depuis backup');
+        console.log('🔄 Configuration restored from backup');
       } else {
-        throw new Error('Pas de backup disponible');
+        throw new Error('No backup available');
       }
       
     } catch (error) {
-      console.warn('⚠️ Backup invalide, reset par défaut');
+      console.warn('⚠️ Invalid backup, resetting to default');
       await this.resetToDefault();
     }
   }
@@ -277,14 +281,14 @@ class ConfigManager {
   }
 
   validateConfig() {
-    // Validation du port
+    // Port validation
     const port = this.get('server.port');
     if (typeof port !== 'number' || port < 1024 || port > 65535) {
-      console.warn('⚠️ Port invalide, correction automatique');
+      console.warn('⚠️ Invalid port, auto-correcting');
       this.config.server.port = 8080;
     }
     
-    // Validation fenêtre
+    // Window validation
     const width = this.get('window.width');
     const height = this.get('window.height');
     if (typeof width !== 'number' || width < 400) {
