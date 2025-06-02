@@ -10,7 +10,7 @@ const BENCHMARK_CONFIG = {
   memoryCheckInterval: 1000 // 1s
 };
 
-// === UTILITAIRES ===
+// === UTILITIES ===
 function formatTime(ms) {
   return `${(ms / 1000).toFixed(2)}s`;
 }
@@ -60,9 +60,9 @@ function getElectronMemoryUsage(pid) {
   });
 }
 
-// === BENCHMARK PRINCIPAL ===
+// === MAIN BENCHMARK ===
 async function runSingleBenchmark() {
-  console.log('\n🚀 Démarrage du benchmark...');
+  console.log('\n🚀 Starting benchmark...');
   
   const results = {
     appStartTime: 0,
@@ -74,7 +74,7 @@ async function runSingleBenchmark() {
   return new Promise((resolve) => {
     const startTime = Date.now();
     
-    // Lancer Electron
+    // Launch Electron
     const electronProcess = spawn('npm', ['run', 'electron:build'], {
       stdio: 'pipe',
       shell: true
@@ -87,24 +87,24 @@ async function runSingleBenchmark() {
       const output = data.toString();
       console.log(`📄 ${output.trim()}`);
       
-      // Détecter quand l'app Electron est prête
+      // Detect when Electron app is ready
       if (output.includes('🚀 Electron Mode:') && !appReady) {
         results.appStartTime = Date.now() - startTime;
         appReady = true;
-        console.log(`✅ App démarrée en ${formatTime(results.appStartTime)}`);
+        console.log(`✅ App started in ${formatTime(results.appStartTime)}`);
       }
       
-      // Détecter quand le serveur Next.js est prêt
+      // Detect when Next.js server is ready
       if (output.includes('Ready') && !serverReady) {
         results.serverStartTime = Date.now() - startTime;
         serverReady = true;
-        console.log(`✅ Serveur prêt en ${formatTime(results.serverStartTime)}`);
+        console.log(`✅ Server ready in ${formatTime(results.serverStartTime)}`);
         
-        // Mesurer mémoire après 2s
+        // Measure memory after 2s
         setTimeout(async () => {
           if (electronProcess.pid) {
             results.memoryUsage = await getElectronMemoryUsage(electronProcess.pid);
-            console.log(`📊 Mémoire: ${formatMemory(results.memoryUsage)}`);
+            console.log(`📊 Memory: ${formatMemory(results.memoryUsage)}`);
           }
           
           results.success = true;
@@ -120,15 +120,15 @@ async function runSingleBenchmark() {
 
     electronProcess.on('close', (code) => {
       if (!results.success) {
-        console.log(`🔄 Processus fermé avec code ${code}`);
+        console.log(`🔄 Process closed with code ${code}`);
         resolve(results);
       }
     });
 
-    // Timeout de sécurité
+    // Safety timeout
     setTimeout(() => {
       if (!results.success) {
-        console.log('⏰ Timeout atteint');
+        console.log('⏰ Timeout reached');
         electronProcess.kill();
         resolve(results);
       }
@@ -136,31 +136,31 @@ async function runSingleBenchmark() {
   });
 }
 
-// === BENCHMARK COMPLET ===
+// === COMPLETE BENCHMARK ===
 async function runFullBenchmark() {
   console.log('🎯 === BENCHMARK ELECTRON + NEXT.JS ===');
-  console.log(`📊 ${BENCHMARK_CONFIG.iterations} itérations`);
+  console.log(`📊 ${BENCHMARK_CONFIG.iterations} iterations`);
   
   const allResults = [];
   
   for (let i = 1; i <= BENCHMARK_CONFIG.iterations; i++) {
-    console.log(`\n--- Itération ${i}/${BENCHMARK_CONFIG.iterations} ---`);
+    console.log(`\n--- Iteration ${i}/${BENCHMARK_CONFIG.iterations} ---`);
     
     const result = await runSingleBenchmark();
     allResults.push(result);
     
-    // Pause entre itérations
+    // Pause between iterations
     if (i < BENCHMARK_CONFIG.iterations) {
       console.log('⏸️ Pause 3s...');
       await new Promise(resolve => setTimeout(resolve, 3000));
     }
   }
   
-  // === RÉSULTATS FINAUX ===
+  // === FINAL RESULTS ===
   const validResults = allResults.filter(r => r.success);
   
   if (validResults.length === 0) {
-    console.log('\n❌ ÉCHEC : Aucun benchmark réussi');
+    console.log('\n❌ FAILURE: No successful benchmarks');
     return;
   }
   
@@ -168,34 +168,34 @@ async function runFullBenchmark() {
   const avgServerStart = validResults.reduce((sum, r) => sum + r.serverStartTime, 0) / validResults.length;
   const avgMemory = validResults.reduce((sum, r) => sum + r.memoryUsage, 0) / validResults.length;
   
-  console.log('\n🎯 === RÉSULTATS FINAUX ===');
-  console.log(`✅ Benchmarks réussis: ${validResults.length}/${BENCHMARK_CONFIG.iterations}`);
-  console.log(`⚡ Temps démarrage app: ${formatTime(avgAppStart)} (objectif: <5s)`);
-  console.log(`🚀 Temps démarrage serveur: ${formatTime(avgServerStart)} (objectif: <10s)`);
-  console.log(`📊 Mémoire moyenne: ${formatMemory(avgMemory)} (objectif: <200MB)`);
+  console.log('\n🎯 === FINAL RESULTS ===');
+  console.log(`✅ Successful benchmarks: ${validResults.length}/${BENCHMARK_CONFIG.iterations}`);
+  console.log(`⚡ App startup time: ${formatTime(avgAppStart)} (target: <5s)`);
+  console.log(`🚀 Server startup time: ${formatTime(avgServerStart)} (target: <10s)`);
+  console.log(`📊 Average memory: ${formatMemory(avgMemory)} (target: <200MB)`);
   
-  // === VALIDATION CRITÈRES ===
-  console.log('\n📋 === VALIDATION CRITÈRES ===');
-  console.log(`${avgAppStart < 5000 ? '✅' : '❌'} Démarrage app < 5s: ${avgAppStart < 5000 ? 'PASS' : 'FAIL'}`);
-  console.log(`${avgServerStart < 10000 ? '✅' : '❌'} Démarrage serveur < 10s: ${avgServerStart < 10000 ? 'PASS' : 'FAIL'}`);
-  console.log(`${avgMemory < 200 * 1024 * 1024 ? '✅' : '❌'} Mémoire < 200MB: ${avgMemory < 200 * 1024 * 1024 ? 'PASS' : 'FAIL'}`);
+  // === CRITERIA VALIDATION ===
+  console.log('\n📋 === CRITERIA VALIDATION ===');
+  console.log(`${avgAppStart < 5000 ? '✅' : '❌'} App startup < 5s: ${avgAppStart < 5000 ? 'PASS' : 'FAIL'}`);
+  console.log(`${avgServerStart < 10000 ? '✅' : '❌'} Server startup < 10s: ${avgServerStart < 10000 ? 'PASS' : 'FAIL'}`);
+  console.log(`${avgMemory < 200 * 1024 * 1024 ? '✅' : '❌'} Memory < 200MB: ${avgMemory < 200 * 1024 * 1024 ? 'PASS' : 'FAIL'}`);
   
-  // === RECOMMANDATIONS ===
-  console.log('\n💡 === RECOMMANDATIONS ===');
+  // === RECOMMENDATIONS ===
+  console.log('\n💡 === RECOMMENDATIONS ===');
   if (avgAppStart >= 5000) {
-    console.log('🔧 App démarrage lent: Optimiser preload, réduire imports initiaux');
+    console.log('🔧 Slow app startup: Optimize preload, reduce initial imports');
   }
   if (avgServerStart >= 10000) {
-    console.log('🔧 Serveur démarrage lent: Optimiser build Next.js, réduire dépendances');
+    console.log('🔧 Slow server startup: Optimize Next.js build, reduce dependencies');
   }
   if (avgMemory >= 200 * 1024 * 1024) {
-    console.log('🔧 Mémoire élevée: Optimiser Electron, désactiver features inutiles');
+    console.log('🔧 High memory usage: Optimize Electron, disable unnecessary features');
   }
   
-  console.log('\n🎉 Benchmark terminé !');
+  console.log('\n🎉 Benchmark completed!');
 }
 
-// === EXÉCUTION ===
+// === EXECUTION ===
 if (require.main === module) {
   runFullBenchmark().catch(console.error);
 }

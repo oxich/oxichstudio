@@ -7,53 +7,53 @@ class ErrorHandler extends EventEmitter {
     this.configManager = configManager;
     this.networkManager = networkManager;
     this.errorHistory = [];
-    this.maxHistorySize = 50;
+    this.maxHistorySize = 100;
     this.recoveryAttempts = new Map();
-    this.maxRecoveryAttempts = 3;
   }
 
   /**
-   * Gère une erreur avec stratégies de récupération
+   * Handles an error with recovery strategies
    */
-  async handleError(error, context = {}, allowRecovery = true) {
-    const errorInfo = this.analyzeError(error, context);
-    
-    // Enregistrer dans l'historique
-    this.addToHistory(errorInfo);
-    
-    // Log détaillé
-    await this.logManager?.error('Erreur capturée', {
-      ...errorInfo,
-      context,
-      recoveryAllowed: allowRecovery
-    });
+  async handleError(error, context = {}, shouldRecover = true) {
+    try {
+      const errorInfo = this.analyzeError(error, context);
+      
+      await this.logManager?.error('Error captured', {
+        type: errorInfo.type,
+        severity: errorInfo.severity,
+        context: context,
+        recoverable: errorInfo.recoverable
+      }, error);
 
-    // Émettre l'événement pour l'interface utilisateur
-    this.emit('error-occurred', errorInfo);
+      this.addToHistory(errorInfo);
+      this.emit('error-occurred', errorInfo);
 
-    // Tenter la récupération si autorisée
-    if (allowRecovery) {
-      await this.attemptRecovery(errorInfo);
+      if (shouldRecover && errorInfo.recoverable) {
+        await this.attemptRecovery(errorInfo);
+      }
+
+      return errorInfo;
+
+    } catch (handlingError) {
+      console.error('Error in error handler:', handlingError);
     }
-
-    return errorInfo;
   }
 
   /**
-   * Analyse et catégorise une erreur
+   * Analyzes and categorizes an error
    */
   analyzeError(error, context = {}) {
     const errorInfo = {
-      id: Date.now().toString(),
-      timestamp: new Date().toISOString(),
-      message: error.message || 'Erreur inconnue',
-      code: error.code || 'UNKNOWN_ERROR',
+      id: Date.now() + Math.random().toString(36).substr(2, 9),
+      timestamp: new Date(),
+      message: error.message || 'Unknown error',
       stack: error.stack,
-      context,
-      category: this.categorizeError(error),
-      severity: this.getSeverity(error),
-      userMessage: this.getUserFriendlyMessage(error),
+      code: error.code,
+      type: this.categorizeError(error),
+      severity: this.determineSeverity(error),
+      context: context,
       recoverable: this.isRecoverable(error),
+      userMessage: this.generateUserMessage(error),
       suggestedActions: this.getSuggestedActions(error)
     };
 
@@ -61,362 +61,387 @@ class ErrorHandler extends EventEmitter {
   }
 
   /**
-   * Catégorise le type d'erreur
+   * Categorizes error type
    */
   categorizeError(error) {
-    if (error.code) {
-      // Erreurs réseau
-      if (['EADDRINUSE', 'ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT'].includes(error.code)) {
-        return 'NETWORK';
-      }
-      
-      // Erreurs système
-      if (['ENOENT', 'EACCES', 'EPERM', 'EMFILE', 'ENFILE'].includes(error.code)) {
-        return 'SYSTEM';
-      }
-      
-      // Erreurs de processus
-      if (['ECHILD', 'ESRCH'].includes(error.code)) {
-        return 'PROCESS';
-      }
-    }
-
-    // Erreurs de validation
-    if (error.message.includes('validation') || error.message.includes('invalid')) {
-      return 'VALIDATION';
-    }
-
-    // Erreurs de configuration
-    if (error.message.includes('config') || error.message.includes('configuration')) {
-      return 'CONFIG';
-    }
-
-    // Erreurs de serveur
-    if (error.message.includes('server') || error.message.includes('Next.js')) {
-      return 'SERVER';
-    }
-
-    return 'UNKNOWN';
-  }
-
-  /**
-   * Détermine la sévérité de l'erreur
-   */
-  getSeverity(error) {
-    // Critique : erreurs qui empêchent l'application de fonctionner
-    if (['SYSTEM', 'PROCESS'].includes(this.categorizeError(error))) {
-      return 'CRITICAL';
-    }
-
-    // Haute : erreurs qui affectent des fonctionnalités principales
-    if (['SERVER', 'NETWORK'].includes(this.categorizeError(error))) {
-      return 'HIGH';
-    }
-
-    // Moyenne : erreurs qui affectent l'expérience utilisateur
-    if (['CONFIG', 'VALIDATION'].includes(this.categorizeError(error))) {
-      return 'MEDIUM';
-    }
-
-    // Faible : erreurs mineures ou récupérables
-    return 'LOW';
-  }
-
-  /**
-   * Génère un message utilisateur compréhensible
-   */
-  getUserFriendlyMessage(error) {
-    const category = this.categorizeError(error);
     const code = error.code;
+    const message = error.message?.toLowerCase() || '';
 
-    switch (category) {
-      case 'NETWORK':
-        if (code === 'EADDRINUSE') {
-          return 'Le port sélectionné est déjà utilisé par une autre application. Veuillez choisir un port différent.';
-        }
-        if (code === 'ECONNREFUSED') {
-          return 'Impossible de se connecter au serveur. Vérifiez que le serveur est démarré.';
-        }
-        if (code === 'ENOTFOUND') {
-          return 'Adresse réseau introuvable. Vérifiez votre connexion internet.';
-        }
-        return 'Problème de réseau détecté. Vérifiez votre connexion.';
-
-      case 'SYSTEM':
-        if (code === 'ENOENT') {
-          return 'Fichier ou dossier requis introuvable. L\'application pourrait être incomplète.';
-        }
-        if (code === 'EACCES' || code === 'EPERM') {
-          return 'Permissions insuffisantes. Essayez de relancer l\'application en tant qu\'administrateur.';
-        }
-        return 'Problème système détecté. Redémarrez l\'application.';
-
-      case 'SERVER':
-        return 'Le serveur web a rencontré un problème. Tentative de redémarrage automatique...';
-
-      case 'CONFIG':
-        return 'Problème de configuration détecté. La configuration sera réinitialisée.';
-
-      case 'VALIDATION':
-        return 'Données invalides détectées. Vérifiez vos paramètres.';
-
-      default:
-        return 'Une erreur inattendue s\'est produite. L\'équipe technique a été notifiée.';
+    // Network errors
+    if (['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET'].includes(code)) {
+      return 'network';
     }
+
+    // System errors
+    if (['ENOENT', 'EACCES', 'EPERM', 'EMFILE'].includes(code)) {
+      return 'system';
+    }
+
+    // Process errors
+    if (code === 'EADDRINUSE' || message.includes('port') || message.includes('address')) {
+      return 'port';
+    }
+
+    // Validation errors
+    if (message.includes('invalid') || message.includes('validation')) {
+      return 'validation';
+    }
+
+    // Configuration errors
+    if (message.includes('config') || message.includes('setting')) {
+      return 'configuration';
+    }
+
+    // Server errors
+    if (message.includes('server') || message.includes('http')) {
+      return 'server';
+    }
+
+    return 'generic';
   }
 
   /**
-   * Détermine si l'erreur est récupérable
+   * Determines error severity
+   */
+  determineSeverity(error) {
+    const type = this.categorizeError(error);
+    
+    // Critical: errors that prevent application from functioning
+    if (['system', 'configuration'].includes(type)) {
+      return 'critical';
+    }
+
+    // High: errors that affect main functionalities
+    if (['server', 'port'].includes(type)) {
+      return 'high';
+    }
+
+    // Medium: errors that affect user experience
+    if (['network', 'validation'].includes(type)) {
+      return 'medium';
+    }
+
+    // Low: minor or recoverable errors
+    return 'low';
+  }
+
+  /**
+   * Generates user-friendly error message
+   */
+  generateUserMessage(error) {
+    const code = error.code;
+    const message = error.message?.toLowerCase() || '';
+
+    switch (code) {
+      case 'ECONNREFUSED':
+        return 'Unable to connect to server. Check that the server is started.';
+      case 'ENOTFOUND':
+        return 'Network address not found. Check your internet connection.';
+      case 'ETIMEDOUT':
+        return 'Network problem detected. Check your connection.';
+      case 'EADDRINUSE':
+        return `Port ${this.extractPortFromMessage(error.message)} is already in use by another application.`;
+      case 'ENOENT':
+        return 'Required file not found. The application may need to be reinstalled.';
+      case 'EACCES':
+      case 'EPERM':
+        return 'Permission denied. Try running the application as administrator.';
+      case 'EMFILE':
+        return 'System problem detected. Restart the application.';
+    }
+
+    if (message.includes('server') || message.includes('http')) {
+      return 'The web server encountered a problem. Attempting automatic restart...';
+    }
+    if (message.includes('config')) {
+      return 'Configuration problem detected. Configuration will be reset.';
+    }
+    if (message.includes('validation') || message.includes('invalid')) {
+      return 'Invalid data detected. Check your settings.';
+    }
+
+    return 'An unexpected error occurred. The technical team has been notified.';
+  }
+
+  /**
+   * Determines if error is recoverable
    */
   isRecoverable(error) {
-    const category = this.categorizeError(error);
-    const nonRecoverableCategories = ['SYSTEM'];
     const code = error.code;
+    const type = this.categorizeError(error);
 
-    // Erreurs système généralement non récupérables
-    if (nonRecoverableCategories.includes(category)) {
+    // Network errors are generally recoverable
+    if (type === 'network') return true;
+
+    // System errors generally not recoverable
+    if (['ENOENT', 'EACCES', 'EPERM'].includes(code)) return false;
+
+    // Specific non-recoverable errors
+    if (error.message?.includes('FATAL') || error.message?.includes('CRITICAL')) {
       return false;
     }
 
-    // Erreurs spécifiques non récupérables
-    if (['EMFILE', 'ENFILE', 'ENOENT'].includes(code)) {
-      return false;
-    }
+    // Port errors are recoverable (can try other port)
+    if (type === 'port') return true;
 
     return true;
   }
 
   /**
-   * Fournit des actions suggérées pour résoudre l'erreur
+   * Provides suggested actions to resolve error
    */
   getSuggestedActions(error) {
-    const category = this.categorizeError(error);
+    const type = this.categorizeError(error);
     const code = error.code;
 
-    switch (category) {
-      case 'NETWORK':
-        if (code === 'EADDRINUSE') {
-          return [
-            'Changer le port dans les paramètres',
-            'Arrêter l\'application qui utilise ce port',
-            'Redémarrer l\'ordinateur'
-          ];
-        }
+    switch (type) {
+      case 'port':
         return [
-          'Vérifier la connexion internet',
-          'Redémarrer le serveur',
-          'Contacter l\'administrateur réseau'
+          'Stop the application using this port',
+          'Use a different port number',
+          'Restart the computer'
         ];
 
-      case 'SYSTEM':
+      case 'network':
         return [
-          'Redémarrer l\'application',
-          'Lancer en tant qu\'administrateur',
-          'Réinstaller l\'application'
+          'Check internet connection',
+          'Restart the server',
+          'Contact network administrator'
         ];
 
-      case 'SERVER':
+      case 'system':
         return [
-          'Redémarrer le serveur',
-          'Vérifier les logs détaillés',
-          'Changer le port du serveur'
+          'Restart the application',
+          'Run as administrator',
+          'Check available disk space'
         ];
 
-      case 'CONFIG':
+      case 'server':
         return [
-          'Réinitialiser la configuration',
-          'Importer une configuration valide',
-          'Supprimer le fichier de configuration'
+          'Restart the server',
+          'Check detailed logs',
+          'Change server port'
+        ];
+
+      case 'configuration':
+        return [
+          'Reset configuration to default',
+          'Check configuration file',
+          'Restore from backup'
+        ];
+
+      case 'validation':
+        return [
+          'Check entered data',
+          'Reset to default values',
+          'Restart the application',
+          'Contact support'
         ];
 
       default:
         return [
-          'Redémarrer l\'application',
-          'Consulter les logs',
-          'Contacter le support technique'
+          'Restart the application',
+          'Check application logs',
+          'Contact technical support'
         ];
     }
   }
 
   /**
-   * Tente une récupération automatique
+   * Attempts error recovery
    */
   async attemptRecovery(errorInfo) {
-    const { category, code, id } = errorInfo;
-    const attemptKey = `${category}-${code}`;
+    const { id, type } = errorInfo;
 
-    // Vérifier le nombre de tentatives précédentes
-    const previousAttempts = this.recoveryAttempts.get(attemptKey) || 0;
-    if (previousAttempts >= this.maxRecoveryAttempts) {
-      await this.logManager?.warn('Nombre maximum de tentatives de récupération atteint', {
-        category,
-        code,
-        attempts: previousAttempts
-      });
+    // Check number of previous attempts
+    const attempts = this.recoveryAttempts.get(type) || 0;
+    if (attempts >= 3) {
+      await this.logManager?.warn('Maximum recovery attempts reached', { type, attempts });
       return false;
     }
 
-    // Incrémenter le compteur
-    this.recoveryAttempts.set(attemptKey, previousAttempts + 1);
-
-    await this.logManager?.info('Tentative de récupération automatique', {
-      errorId: id,
-      category,
-      attempt: previousAttempts + 1
-    });
+    this.recoveryAttempts.set(type, attempts + 1);
 
     try {
-      let recovered = false;
+      let success = false;
 
-      switch (category) {
-        case 'NETWORK':
-          recovered = await this.recoverNetworkError(errorInfo);
+      switch (type) {
+        case 'network':
+          success = await this.recoverFromNetworkError(errorInfo);
           break;
-        case 'CONFIG':
-          recovered = await this.recoverConfigError(errorInfo);
+        case 'port':
+          success = await this.recoverFromPortError(errorInfo);
           break;
-        case 'SERVER':
-          recovered = await this.recoverServerError(errorInfo);
+        case 'configuration':
+          success = await this.recoverFromConfigError(errorInfo);
+          break;
+        case 'server':
+          success = await this.recoverFromServerError(errorInfo);
           break;
         default:
-          recovered = await this.recoverGenericError(errorInfo);
+          success = await this.genericRecovery(errorInfo);
       }
 
-      if (recovered) {
-        // Reset le compteur en cas de succès
-        this.recoveryAttempts.delete(attemptKey);
+      if (success) {
+        this.recoveryAttempts.delete(type);
         this.emit('recovery-success', errorInfo);
-        await this.logManager?.info('Récupération automatique réussie', { errorId: id });
-      } else {
-        this.emit('recovery-failed', errorInfo);
-        await this.logManager?.warn('Échec de la récupération automatique', { errorId: id });
+        await this.logManager?.info('Error recovery successful', { errorId: id, type });
       }
 
-      return recovered;
+      return success;
 
     } catch (recoveryError) {
-      await this.logManager?.error('Erreur durant la récupération', { errorId: id }, recoveryError);
-      this.emit('recovery-error', { originalError: errorInfo, recoveryError });
+      await this.logManager?.error('Error during recovery', { errorId: id }, recoveryError);
       return false;
     }
   }
 
   /**
-   * Récupération d'erreurs réseau
+   * Network error recovery
    */
-  async recoverNetworkError(errorInfo) {
-    const { code } = errorInfo;
-
-    if (code === 'EADDRINUSE') {
-      // Proposer un port alternatif
-      try {
-        const currentPort = this.configManager?.get('server.port', 8080);
-        const suggestions = await this.networkManager?.suggestAlternativePorts(currentPort, 1);
-        
-        if (suggestions && suggestions.length > 0) {
-          const newPort = suggestions[0];
-          await this.configManager?.set('server.port', newPort);
-          
-          this.emit('port-changed-automatically', { 
-            oldPort: currentPort, 
-            newPort,
-            reason: 'Port conflict recovery'
-          });
-          
-          return true;
-        }
-      } catch (error) {
-        // Échec de récupération
+  async recoverFromNetworkError(errorInfo) {
+    // Test network connectivity
+    if (this.networkManager) {
+      const isConnected = await this.networkManager.testNetworkConnectivity();
+      if (isConnected) {
+        await this.logManager?.info('Network connectivity restored');
+        return true;
       }
     }
 
+    // Wait before retry
+    await new Promise(resolve => setTimeout(resolve, 5000));
     return false;
   }
 
   /**
-   * Récupération d'erreurs de configuration
+   * Port error recovery
    */
-  async recoverConfigError(errorInfo) {
-    try {
-      // Tenter de restaurer depuis backup
-      await this.configManager?.resetToDefault();
-      this.emit('config-reset-automatically', { reason: 'Config error recovery' });
-      return true;
-    } catch (error) {
-      return false;
+  async recoverFromPortError(errorInfo) {
+    if (this.networkManager && this.configManager) {
+      // Find alternative port
+      const currentPort = this.configManager.get('server.port', 8080);
+      const suggestions = await this.networkManager.suggestAlternativePorts(currentPort, 1);
+      
+      if (suggestions.length > 0) {
+        const newPort = suggestions[0];
+        await this.configManager.set('server.port', newPort);
+        
+        this.emit('port-changed-automatically', { 
+          oldPort: currentPort, 
+          newPort: newPort,
+          reason: 'Port conflict resolution'
+        });
+        
+        return true;
+      }
     }
+    return false;
   }
 
   /**
-   * Récupération d'erreurs serveur
+   * Configuration error recovery
    */
-  async recoverServerError(errorInfo) {
-    // Pour l'instant, signaler qu'une récupération serveur est nécessaire
-    // (sera implémenté avec l'auto-restart dans ServerMonitor)
+  async recoverFromConfigError(errorInfo) {
+    if (this.configManager) {
+      try {
+        await this.configManager.resetToDefault();
+        await this.logManager?.info('Configuration reset for error recovery');
+        return true;
+      } catch (error) {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Server error recovery
+   */
+  async recoverFromServerError(errorInfo) {
+    // For now, signal that server recovery is needed
     this.emit('server-recovery-needed', errorInfo);
     return false;
   }
 
   /**
-   * Récupération générique
+   * Generic recovery
    */
-  async recoverGenericError(errorInfo) {
-    // Pas de récupération automatique pour les erreurs génériques
+  async genericRecovery(errorInfo) {
+    // No automatic recovery for generic errors
     return false;
   }
 
   /**
-   * Ajoute une erreur à l'historique
+   * Adds error to history
    */
   addToHistory(errorInfo) {
     this.errorHistory.unshift(errorInfo);
     
-    // Limiter la taille de l'historique
     if (this.errorHistory.length > this.maxHistorySize) {
       this.errorHistory = this.errorHistory.slice(0, this.maxHistorySize);
     }
   }
 
   /**
-   * Obtient l'historique des erreurs
+   * Gets error history
    */
-  getErrorHistory(limit = 20) {
+  getErrorHistory(limit = 50) {
     return this.errorHistory.slice(0, limit);
   }
 
   /**
-   * Obtient les statistiques d'erreurs
+   * Gets error statistics
    */
   getErrorStatistics() {
-    const total = this.errorHistory.length;
-    const byCategory = {};
-    const bySeverity = {};
-    const recent = this.errorHistory.filter(
-      err => Date.now() - new Date(err.timestamp).getTime() < 24 * 60 * 60 * 1000 // 24h
-    );
+    const stats = {
+      total: this.errorHistory.length,
+      byType: {},
+      bySeverity: {},
+      byTime: {
+        lastHour: 0,
+        lastDay: 0,
+        lastWeek: 0
+      }
+    };
 
-    this.errorHistory.forEach(err => {
-      byCategory[err.category] = (byCategory[err.category] || 0) + 1;
-      bySeverity[err.severity] = (bySeverity[err.severity] || 0) + 1;
+    const now = Date.now();
+    const hour = 60 * 60 * 1000;
+    const day = 24 * hour;
+    const week = 7 * day;
+
+    this.errorHistory.forEach(error => {
+      // By type
+      stats.byType[error.type] = (stats.byType[error.type] || 0) + 1;
+      
+      // By severity
+      stats.bySeverity[error.severity] = (stats.bySeverity[error.severity] || 0) + 1;
+      
+      // By time
+      const errorTime = error.timestamp.getTime();
+      if (now - errorTime < hour) stats.byTime.lastHour++;
+      if (now - errorTime < day) stats.byTime.lastDay++;
+      if (now - errorTime < week) stats.byTime.lastWeek++;
     });
 
-    return {
-      total,
-      recent: recent.length,
-      byCategory,
-      bySeverity,
-      recoveryAttempts: Object.fromEntries(this.recoveryAttempts)
-    };
+    return stats;
   }
 
   /**
-   * Vide l'historique des erreurs
+   * Clears error history
    */
   clearErrorHistory() {
     this.errorHistory = [];
     this.recoveryAttempts.clear();
-    this.logManager?.info('Historique des erreurs vidé');
-    this.emit('history-cleared');
+    this.logManager?.info('Error history cleared');
+  }
+
+  /**
+   * Extracts port number from error message
+   */
+  extractPortFromMessage(message) {
+    const match = message?.match(/(?:port|:)\s*(\d+)/i);
+    return match ? match[1] : 'unknown';
   }
 }
 

@@ -1,23 +1,23 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // === MODE STANDALONE ===
+  // === STANDALONE MODE ===
   output: "standalone",
   
-  // === OPTIMISATIONS BUILD ===
+  // === BUILD OPTIMIZATIONS ===
   compress: true,
   poweredByHeader: false,
   reactStrictMode: true,
   
   // === PERFORMANCE ===
   experimental: {
-    // ✅ Désactiver en dev pour éviter conflits Electron
+    // ✅ Disable in dev to avoid Electron conflicts
     ...(process.env.NODE_ENV !== 'development' && { optimizeCss: true }),
   },
   
   // === DEV CONFIG ===
   ...(process.env.NODE_ENV === 'development' && {
-    // Optimisations pour dev avec Electron
+    // Optimizations for dev with Electron
     onDemandEntries: {
       maxInactiveAge: 25 * 1000,
       pagesBufferLength: 2,
@@ -31,7 +31,7 @@ const nextConfig: NextConfig = {
     domains: ['localhost', '127.0.0.1'],
   },
   
-  // === SÉCURITÉ ===
+  // === SECURITY ===
   async headers() {
     return [
       {

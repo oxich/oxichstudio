@@ -8,7 +8,7 @@ const config = {
   port: 3000
 };
 
-// === UTILITAIRES ===
+// === UTILITIES ===
 function formatTime(ms) {
   return `${(ms / 1000).toFixed(2)}s`;
 }
@@ -47,9 +47,9 @@ async function getProcessMemory(pid) {
   });
 }
 
-// === BENCHMARK RAPIDE ===
+// === QUICK BENCHMARK ===
 async function runQuickBenchmark() {
-  console.log('\n🚀 Benchmark rapide (app pré-buildée)...');
+  console.log('\n🚀 Quick benchmark (pre-built app)...');
   
   const results = {
     appStartTime: 0,
@@ -61,7 +61,7 @@ async function runQuickBenchmark() {
   return new Promise((resolve) => {
     const startTime = Date.now();
     
-    // Lancer Electron directement (sans rebuild)
+    // Launch Electron directly (without rebuild)
     const electronProcess = spawn('npx', ['electron', '.'], {
       stdio: 'pipe',
       shell: true
@@ -73,24 +73,24 @@ async function runQuickBenchmark() {
     electronProcess.stdout.on('data', (data) => {
       const output = data.toString();
       
-      // Détecter quand l'app Electron est prête
+      // Detect when Electron app is ready
       if (output.includes('🚀 Electron Mode:') && !appReady) {
         results.appStartTime = Date.now() - startTime;
         appReady = true;
-        console.log(`✅ App Electron: ${formatTime(results.appStartTime)}`);
+        console.log(`✅ Electron App: ${formatTime(results.appStartTime)}`);
       }
       
-      // Détecter quand le serveur Next.js est prêt
+      // Detect when Next.js server is ready
       if (output.includes('Ready in') && !serverReady) {
         results.serverStartTime = Date.now() - startTime;
         serverReady = true;
-        console.log(`✅ Serveur Next.js: ${formatTime(results.serverStartTime)}`);
+        console.log(`✅ Next.js Server: ${formatTime(results.serverStartTime)}`);
         
-        // Mesurer mémoire après 2s
+        // Measure memory after 2s
         setTimeout(async () => {
           if (electronProcess.pid) {
             results.memoryUsage = await getProcessMemory(electronProcess.pid);
-            console.log(`📊 Mémoire: ${formatMemory(results.memoryUsage)}`);
+            console.log(`📊 Memory: ${formatMemory(results.memoryUsage)}`);
           }
           
           results.success = true;
@@ -102,7 +102,7 @@ async function runQuickBenchmark() {
 
     electronProcess.stderr.on('data', (data) => {
       const output = data.toString();
-      // Ignorer les warnings DevTools
+      // Ignore DevTools warnings
       if (!output.includes('DevTools') && !output.includes('Autofill')) {
         console.error(`❌ ${output.trim()}`);
       }
@@ -114,10 +114,10 @@ async function runQuickBenchmark() {
       }
     });
 
-    // Timeout de sécurité
+    // Safety timeout
     setTimeout(() => {
       if (!results.success) {
-        console.log('⏰ Timeout atteint');
+        console.log('⏰ Timeout reached');
         electronProcess.kill();
         resolve(results);
       }
@@ -125,11 +125,11 @@ async function runQuickBenchmark() {
   });
 }
 
-// === BENCHMARK COMPLET ===
+// === COMPLETE BENCHMARK ===
 async function runFullQuickBenchmark() {
-  console.log('🎯 === BENCHMARK RAPIDE ELECTRON + NEXT.JS ===');
-  console.log('📝 Note: App pré-buildée (scénario réaliste d\'utilisation)');
-  console.log(`📊 ${config.iterations} itérations\n`);
+  console.log('🎯 === QUICK BENCHMARK ELECTRON + NEXT.JS ===');
+  console.log('📝 Note: Pre-built app (realistic usage scenario)');
+  console.log(`📊 ${config.iterations} iterations\n`);
   
   const allResults = [];
   
@@ -139,18 +139,18 @@ async function runFullQuickBenchmark() {
     const result = await runQuickBenchmark();
     allResults.push(result);
     
-    // Pause entre tests
+    // Pause between tests
     if (i < config.iterations) {
       console.log('⏸️ Pause 2s...\n');
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
   }
   
-  // === ANALYSE RÉSULTATS ===
+  // === RESULTS ANALYSIS ===
   const validResults = allResults.filter(r => r.success);
   
   if (validResults.length === 0) {
-    console.log('\n❌ ÉCHEC : Aucun test réussi');
+    console.log('\n❌ FAILURE: No successful tests');
     return;
   }
   
@@ -158,35 +158,35 @@ async function runFullQuickBenchmark() {
   const avgServerStart = validResults.reduce((sum, r) => sum + r.serverStartTime, 0) / validResults.length;
   const avgMemory = validResults.reduce((sum, r) => sum + r.memoryUsage, 0) / validResults.length;
   
-  console.log('\n🎯 === RÉSULTATS FINAUX ===');
-  console.log(`✅ Tests réussis: ${validResults.length}/${config.iterations}`);
-  console.log(`⚡ Démarrage Electron: ${formatTime(avgAppStart)}`);
-  console.log(`🚀 Démarrage Serveur: ${formatTime(avgServerStart)}`);
-  console.log(`📊 Mémoire moyenne: ${formatMemory(avgMemory)}`);
+  console.log('\n🎯 === FINAL RESULTS ===');
+  console.log(`✅ Successful tests: ${validResults.length}/${config.iterations}`);
+  console.log(`⚡ Electron Startup: ${formatTime(avgAppStart)}`);
+  console.log(`🚀 Server Startup: ${formatTime(avgServerStart)}`);
+  console.log(`📊 Average Memory: ${formatMemory(avgMemory)}`);
   
-  // === VALIDATION CRITÈRES ===
-  console.log('\n📋 === VALIDATION OBJECTIFS ===');
+  // === CRITERIA VALIDATION ===
+  console.log('\n📋 === OBJECTIVES VALIDATION ===');
   const appOK = avgAppStart < 5000;
   const serverOK = avgServerStart < 10000;  
   const memoryOK = avgMemory < 200 * 1024 * 1024;
   
-  console.log(`${appOK ? '✅' : '❌'} Démarrage Electron < 5s: ${appOK ? 'PASS' : 'FAIL'}`);
-  console.log(`${serverOK ? '✅' : '❌'} Démarrage Serveur < 10s: ${serverOK ? 'PASS' : 'FAIL'}`);
-  console.log(`${memoryOK ? '✅' : '❌'} Mémoire < 200MB: ${memoryOK ? 'PASS' : 'FAIL'}`);
+  console.log(`${appOK ? '✅' : '❌'} Electron Startup < 5s: ${appOK ? 'PASS' : 'FAIL'}`);
+  console.log(`${serverOK ? '✅' : '❌'} Server Startup < 10s: ${serverOK ? 'PASS' : 'FAIL'}`);
+  console.log(`${memoryOK ? '✅' : '❌'} Memory < 200MB: ${memoryOK ? 'PASS' : 'FAIL'}`);
   
   const score = [appOK, serverOK, memoryOK].filter(Boolean).length;
-  console.log(`\n🏆 Score: ${score}/3 objectifs atteints`);
+  console.log(`\n🏆 Score: ${score}/3 objectives achieved`);
   
   if (score === 3) {
-    console.log('🎉 EXCELLENT ! Toutes les performances respectent les critères');
+    console.log('🎉 EXCELLENT! All performance criteria are met');
   } else if (score >= 2) {
-    console.log('✅ BON ! La plupart des critères sont respectés');
+    console.log('✅ GOOD! Most criteria are met');
   } else {
-    console.log('⚠️ À AMÉLIORER : Plusieurs optimisations nécessaires');
+    console.log('⚠️ NEEDS IMPROVEMENT: Several optimizations required');
   }
 }
 
-// === EXÉCUTION ===
+// === EXECUTION ===
 if (require.main === module) {
   runFullQuickBenchmark().catch(console.error);
 }

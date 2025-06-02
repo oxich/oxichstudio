@@ -6,16 +6,17 @@ class LogManager {
   constructor() {
     this.logsDir = path.join(app.getPath('userData'), 'logs');
     this.currentLogFile = path.join(this.logsDir, 'app.log');
-    this.maxLogSize = 5 * 1024 * 1024; // 5MB
+    this.maxFileSize = 10 * 1024 * 1024; // 10MB
     this.maxLogFiles = 5;
+    this.logLevel = 'info';
     this.logLevels = {
-      ERROR: 0,
-      WARN: 1,
-      INFO: 2,
-      DEBUG: 3
+      error: 0,
+      warn: 1,
+      info: 2,
+      debug: 3
     };
-    this.currentLevel = this.logLevels.INFO;
-    this.isInitialized = false;
+    this.logHistory = [];
+    this.maxHistorySize = 1000;
   }
 
   /**
@@ -23,297 +24,340 @@ class LogManager {
    */
   async initialize() {
     try {
-      // Créer le dossier logs s'il n'existe pas
-      await this.ensureLogsDirectory();
+      // Create logs directory
+      await fs.mkdir(this.logsDir, { recursive: true });
       
-      // Nettoyer les anciens logs
-      await this.cleanOldLogs();
+      // Check rotation on startup
+      await this.checkRotation();
       
-      this.isInitialized = true;
-      
-      // Log de démarrage
-      await this.info('LogManager initialisé', {
+      // Startup log
+      await this.info('LogManager initialized', {
         logsDir: this.logsDir,
-        maxSize: this.maxLogSize,
-        maxFiles: this.maxLogFiles
+        logLevel: this.logLevel,
+        maxFileSize: this.maxFileSize
       });
       
     } catch (error) {
-      console.error('❌ Erreur initialisation LogManager:', error);
+      console.error('❌ LogManager initialization error:', error);
+      throw error;
     }
   }
 
   /**
-   * Définit le niveau de log
+   * Sets log level
    */
-  setLevel(level) {
-    if (typeof level === 'string') {
-      const upperLevel = level.toUpperCase();
-      if (upperLevel in this.logLevels) {
-        this.currentLevel = this.logLevels[upperLevel];
-      }
-    } else if (typeof level === 'number') {
-      this.currentLevel = level;
+  setLogLevel(level) {
+    if (this.logLevels.hasOwnProperty(level)) {
+      this.logLevel = level;
+      this.info('Log level changed', { level });
     }
   }
 
   /**
-   * Log niveau ERROR
+   * Gets current log level
    */
-  async error(message, data = null, error = null) {
-    await this.log('ERROR', message, data, error);
+  getLogLevel() {
+    return this.logLevel;
   }
 
   /**
-   * Log niveau WARN
+   * ERROR level log
    */
-  async warn(message, data = null) {
-    await this.log('WARN', message, data);
+  async error(message, metadata = null, error = null) {
+    return this.log('error', message, metadata, error);
   }
 
   /**
-   * Log niveau INFO
+   * WARN level log
    */
-  async info(message, data = null) {
-    await this.log('INFO', message, data);
+  async warn(message, metadata = null) {
+    return this.log('warn', message, metadata);
   }
 
   /**
-   * Log niveau DEBUG
+   * INFO level log
    */
-  async debug(message, data = null) {
-    await this.log('DEBUG', message, data);
+  async info(message, metadata = null) {
+    return this.log('info', message, metadata);
   }
 
   /**
-   * Log principal
+   * DEBUG level log
    */
-  async log(level, message, data = null, error = null) {
-    if (!this.isInitialized) {
-      console.log(`[${level}] ${message}`);
-      return;
-    }
+  async debug(message, metadata = null) {
+    return this.log('debug', message, metadata);
+  }
 
-    // Vérifier le niveau
-    if (this.logLevels[level] > this.currentLevel) {
-      return;
-    }
-
+  /**
+   * Main logging method
+   */
+  async log(level, message, metadata = null, error = null) {
     try {
+      // Check level
+      if (this.logLevels[level] > this.logLevels[this.logLevel]) {
+        return;
+      }
+
       const timestamp = new Date().toISOString();
       const logEntry = {
         timestamp,
-        level,
+        level: level.toUpperCase(),
         message,
-        pid: process.pid,
-        ...(data && { data }),
-        ...(error && { 
-          error: {
-            message: error.message,
-            stack: error.stack,
-            name: error.name
-          }
-        })
+        metadata,
+        error: error ? {
+          message: error.message,
+          stack: error.stack,
+          code: error.code
+        } : null,
+        pid: process.pid
       };
 
-      const logLine = JSON.stringify(logEntry) + '\n';
-      
-      // Vérifier rotation avant écriture
+      // Add to memory history
+      this.addToHistory(logEntry);
+
+      // Check rotation before writing
       await this.checkRotation();
-      
-      // Écrire dans le fichier
-      await fs.appendFile(this.currentLogFile, logLine, 'utf8');
-      
-      // Afficher aussi dans la console pour le développement
-      const consoleMessage = `[${level}] ${message}`;
-      if (level === 'ERROR') {
-        console.error(consoleMessage, data || '');
-      } else if (level === 'WARN') {
-        console.warn(consoleMessage, data || '');
-      } else {
-        console.log(consoleMessage, data || '');
-      }
-      
+
+      // Write to file
+      const logLine = this.formatLogEntry(logEntry);
+      await fs.appendFile(this.currentLogFile, logLine + '\n', 'utf8');
+
     } catch (error) {
-      console.error('❌ Erreur écriture log:', error);
+      console.error('❌ Logging error:', error);
     }
   }
 
   /**
-   * Log des performances
+   * Formats log entry for file writing
    */
-  async performance(operation, duration, details = null) {
-    await this.info(`Performance: ${operation}`, {
+  formatLogEntry(entry) {
+    const { timestamp, level, message, metadata, error, pid } = entry;
+    
+    let formatted = `[${timestamp}] [${level}] [PID:${pid}] ${message}`;
+    
+    if (metadata) {
+      formatted += ` | META: ${JSON.stringify(metadata)}`;
+    }
+    
+    if (error) {
+      formatted += ` | ERROR: ${error.message}`;
+      if (error.stack) {
+        formatted += ` | STACK: ${error.stack.replace(/\n/g, ' | ')}`;
+      }
+    }
+    
+    return formatted;
+  }
+
+  /**
+   * Performance logs
+   */
+  async performance(operation, duration, metadata = null) {
+    return this.info(`Performance: ${operation}`, {
       duration: `${duration}ms`,
-      ...details
+      operation,
+      ...metadata
     });
   }
 
   /**
-   * Log des événements serveur
+   * Server event logs
    */
-  async serverEvent(event, data = null) {
-    await this.info(`Server: ${event}`, data);
+  async serverEvent(message, metadata = null) {
+    return this.info(`Server: ${message}`, metadata);
   }
 
   /**
-   * Log des actions utilisateur
+   * User action logs
    */
-  async userAction(action, details = null) {
-    await this.info(`User: ${action}`, details);
+  async userAction(message, metadata = null) {
+    return this.info(`User: ${message}`, metadata);
   }
 
   /**
-   * Récupère les logs récents (pour l'interface)
+   * Adds entry to memory history
    */
-  async getRecentLogs(limit = 100) {
+  addToHistory(entry) {
+    this.logHistory.unshift(entry);
+    
+    if (this.logHistory.length > this.maxHistorySize) {
+      this.logHistory = this.logHistory.slice(0, this.maxHistorySize);
+    }
+  }
+
+  /**
+   * Gets recent logs from memory
+   */
+  getRecentLogs(count = 100) {
+    return this.logHistory.slice(0, count);
+  }
+
+  /**
+   * Gets logs from file
+   */
+  async getLogsFromFile(lines = 100) {
     try {
-      const exists = await this.fileExists(this.currentLogFile);
-      if (!exists) {
-        return [];
-      }
-
-      const data = await fs.readFile(this.currentLogFile, 'utf8');
-      const lines = data.trim().split('\n').filter(line => line.length > 0);
-      
-      const logs = lines
-        .slice(-limit)
-        .map(line => {
-          try {
-            return JSON.parse(line);
-          } catch {
-            return null;
-          }
-        })
-        .filter(log => log !== null);
-
-      return logs;
-      
+      const content = await fs.readFile(this.currentLogFile, 'utf8');
+      const logLines = content.split('\n').filter(line => line.trim());
+      return logLines.slice(-lines);
     } catch (error) {
-      console.error('❌ Erreur lecture logs:', error);
       return [];
     }
   }
 
   /**
-   * Exporte les logs pour support
+   * Exports logs
    */
   async exportLogs() {
     try {
-      const logs = await this.getRecentLogs(1000);
-      return JSON.stringify(logs, null, 2);
+      const memoryLogs = this.getRecentLogs();
+      const fileLogs = await this.getLogsFromFile(1000);
+      
+      return {
+        memoryLogs,
+        fileLogs,
+        exportedAt: new Date().toISOString(),
+        logLevel: this.logLevel
+      };
     } catch (error) {
-      console.error('❌ Erreur export logs:', error);
-      return null;
+      throw new Error('Failed to export logs: ' + error.message);
     }
   }
 
   /**
-   * Vide les logs (reset)
+   * Clears logs
    */
   async clearLogs() {
     try {
-      if (await this.fileExists(this.currentLogFile)) {
-        await fs.unlink(this.currentLogFile);
-      }
-      
-      await this.info('Logs vidés par l\'utilisateur');
-      
+      this.logHistory = [];
+      await fs.writeFile(this.currentLogFile, '', 'utf8');
+      await this.info('Logs cleared by user');
     } catch (error) {
-      console.error('❌ Erreur vidage logs:', error);
+      throw new Error('Failed to clear logs: ' + error.message);
     }
   }
 
-  // === MÉTHODES PRIVÉES ===
-
-  async ensureLogsDirectory() {
-    try {
-      await fs.mkdir(this.logsDir, { recursive: true });
-    } catch (error) {
-      if (error.code !== 'EEXIST') {
-        throw error;
-      }
-    }
-  }
-
+  /**
+   * Checks if log rotation is needed
+   */
   async checkRotation() {
     try {
-      const exists = await this.fileExists(this.currentLogFile);
-      if (!exists) {
-        return;
+      const stats = await fs.stat(this.currentLogFile).catch(() => null);
+      
+      if (!stats) {
+        return; // File doesn't exist yet
       }
 
-      const stats = await fs.stat(this.currentLogFile);
-      
-      if (stats.size >= this.maxLogSize) {
-        await this.rotateLog();
+      if (stats.size >= this.maxFileSize) {
+        await this.rotateLogFiles();
       }
       
     } catch (error) {
-      console.error('❌ Erreur vérification rotation:', error);
+      console.error('❌ Rotation check error:', error);
     }
   }
 
-  async rotateLog() {
+  /**
+   * Rotates log files
+   */
+  async rotateLogFiles() {
     try {
-      // Décaler les fichiers existants
+      // Shift existing files
       for (let i = this.maxLogFiles - 1; i >= 1; i--) {
-        const currentFile = path.join(this.logsDir, `app.${i}.log`);
-        const nextFile = path.join(this.logsDir, `app.${i + 1}.log`);
+        const currentPath = path.join(this.logsDir, `app.${i}.log`);
+        const nextPath = path.join(this.logsDir, `app.${i + 1}.log`);
         
-        if (await this.fileExists(currentFile)) {
+        try {
+          await fs.access(currentPath);
           if (i === this.maxLogFiles - 1) {
-            // Supprimer le plus ancien
-            await fs.unlink(currentFile);
+            await fs.unlink(currentPath);
           } else {
-            // Renommer vers numéro suivant
-            await fs.rename(currentFile, nextFile);
+            await fs.rename(currentPath, nextPath);
           }
+        } catch (error) {
+          // File doesn't exist, continue
         }
       }
-      
-      // Renommer le fichier courant
-      const firstRotated = path.join(this.logsDir, 'app.1.log');
-      if (await this.fileExists(this.currentLogFile)) {
-        await fs.rename(this.currentLogFile, firstRotated);
+
+      // Rename current file
+      const archivePath = path.join(this.logsDir, 'app.1.log');
+      try {
+        await fs.rename(this.currentLogFile, archivePath);
+      } catch (error) {
+        // Current file doesn't exist
       }
-      
-      console.log('🔄 Rotation des logs effectuée');
+
+      console.log('🔄 Log rotation completed');
       
     } catch (error) {
-      console.error('❌ Erreur rotation logs:', error);
+      console.error('❌ Log rotation error:', error);
     }
   }
 
+  /**
+   * Cleans old log files
+   */
   async cleanOldLogs() {
     try {
-      const files = await fs.readdir(this.logsDir);
-      const logFiles = files.filter(file => file.match(/^app\.\d+\.log$/));
-      
-      // Supprimer les fichiers au-delà de maxLogFiles
-      const sortedFiles = logFiles.sort((a, b) => {
-        const numA = parseInt(a.match(/app\.(\d+)\.log$/)[1]);
-        const numB = parseInt(b.match(/app\.(\d+)\.log$/)[1]);
-        return numB - numA; // Ordre décroissant
-      });
-      
-      for (let i = this.maxLogFiles - 1; i < sortedFiles.length; i++) {
-        const filePath = path.join(this.logsDir, sortedFiles[i]);
-        await fs.unlink(filePath);
+      // Delete files beyond maxLogFiles
+      for (let i = this.maxLogFiles + 1; i <= this.maxLogFiles + 5; i++) {
+        const oldPath = path.join(this.logsDir, `app.${i}.log`);
+        try {
+          await fs.unlink(oldPath);
+        } catch (error) {
+          // File doesn't exist
+        }
       }
-      
     } catch (error) {
-      // Ignore les erreurs de nettoyage
-      console.warn('⚠️ Erreur nettoyage logs:', error.message);
+      console.error('❌ Old log cleanup error:', error);
     }
   }
 
-  async fileExists(filePath) {
+  /**
+   * Gets log file paths
+   */
+  getLogFiles() {
+    const files = [this.currentLogFile];
+    
+    for (let i = 1; i <= this.maxLogFiles; i++) {
+      files.push(path.join(this.logsDir, `app.${i}.log`));
+    }
+    
+    return files;
+  }
+
+  /**
+   * Gets log statistics
+   */
+  async getLogStats() {
     try {
-      await fs.access(filePath);
-      return true;
-    } catch {
-      return false;
+      const stats = {
+        memoryEntries: this.logHistory.length,
+        currentLogLevel: this.logLevel,
+        logFiles: [],
+        totalSize: 0
+      };
+
+      const logFiles = this.getLogFiles();
+      
+      for (const filePath of logFiles) {
+        try {
+          const fileStat = await fs.stat(filePath);
+          stats.logFiles.push({
+            path: filePath,
+            size: fileStat.size,
+            modified: fileStat.mtime
+          });
+          stats.totalSize += fileStat.size;
+        } catch (error) {
+          // File doesn't exist
+        }
+      }
+
+      return stats;
+      
+    } catch (error) {
+      return null;
     }
   }
 }

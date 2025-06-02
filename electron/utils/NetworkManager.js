@@ -9,7 +9,7 @@ class NetworkManager {
   }
 
   /**
-   * Trouve un port disponible
+   * Finds an available port
    */
   async findAvailablePort(startPort = 8080) {
     return new Promise((resolve, reject) => {
@@ -18,7 +18,7 @@ class NetworkManager {
       server.listen(startPort, (err) => {
         if (err) {
           server.close();
-          // Essayer le port suivant
+          // Try next port
           this.findAvailablePort(startPort + 1)
             .then(resolve)
             .catch(reject);
@@ -32,7 +32,7 @@ class NetworkManager {
       
       server.on('error', (err) => {
         if (err.code === 'EADDRINUSE') {
-          // Port occupé, essayer le suivant
+          // Port occupied, try next one
           this.findAvailablePort(startPort + 1)
             .then(resolve)
             .catch(reject);
@@ -44,7 +44,7 @@ class NetworkManager {
   }
 
   /**
-   * Vérifie si un port spécifique est disponible
+   * Checks if a specific port is available
    */
   async isPortAvailable(port) {
     return new Promise((resolve) => {
@@ -67,42 +67,42 @@ class NetworkManager {
   }
 
   /**
-   * Trouve le meilleur port parmi les préférés
+   * Finds the best port among preferred ones
    */
   async findPreferredPort(configuredPort = null) {
     try {
-      // Essayer d'abord le port configuré
+      // Try configured port first
       if (configuredPort && await this.isPortAvailable(configuredPort)) {
         return configuredPort;
       }
       
-      // Essayer les ports préférés dans l'ordre
+      // Try preferred ports in order
       for (const port of this.preferredPorts) {
         if (await this.isPortAvailable(port)) {
           return port;
         }
       }
       
-      // Si aucun préféré n'est disponible, chercher automatiquement
+      // If no preferred port is available, search automatically
       return await this.findAvailablePort(8080);
       
     } catch (error) {
-      console.error('❌ Erreur recherche port:', error);
+      console.error('❌ Port search error:', error);
       throw error;
     }
   }
 
   /**
-   * Détecte l'adresse IP locale principale (réseau privé)
+   * Detects main local IP address (private network)
    */
   getLocalIPAddress() {
     try {
       const interfaces = os.networkInterfaces();
       
-      // Priorité aux interfaces Ethernet/WiFi
+      // Priority to Ethernet/WiFi interfaces
       const priorityInterfaces = ['Ethernet', 'Wi-Fi', 'en0', 'eth0', 'wlan0'];
       
-      // D'abord, chercher dans les interfaces prioritaires
+      // First, search in priority interfaces
       for (const interfaceName of priorityInterfaces) {
         const interfaceInfo = interfaces[interfaceName];
         if (interfaceInfo) {
@@ -115,7 +115,7 @@ class NetworkManager {
         }
       }
       
-      // Fallback : chercher dans toutes les interfaces (seulement IPs privées)
+      // Fallback: search in all interfaces (private IPs only)
       for (const interfaceName in interfaces) {
         const interfaceInfo = interfaces[interfaceName];
         for (const alias of interfaceInfo) {
@@ -126,19 +126,19 @@ class NetworkManager {
         }
       }
       
-      // Derniers recours
+      // Last resort
       this.localIP = '127.0.0.1';
       return '127.0.0.1';
       
     } catch (error) {
-      console.error('❌ Erreur détection IP locale:', error);
+      console.error('❌ Local IP detection error:', error);
       this.localIP = '127.0.0.1';
       return '127.0.0.1';
     }
   }
 
   /**
-   * Obtient toutes les adresses IP locales
+   * Gets all local IP addresses
    */
   getAllLocalIPs() {
     try {
@@ -161,13 +161,13 @@ class NetworkManager {
       return ips;
       
     } catch (error) {
-      console.error('❌ Erreur énumération IPs:', error);
+      console.error('❌ IP enumeration error:', error);
       return [];
     }
   }
 
   /**
-   * Teste la connectivité réseau
+   * Tests network connectivity
    */
   async testNetworkConnectivity() {
     return new Promise((resolve) => {
@@ -193,17 +193,16 @@ class NetworkManager {
   }
 
   /**
-   * Teste si le serveur répond sur un port
+   * Tests if server responds on a port
    */
   async testServerResponse(port, hostname = 'localhost') {
     return new Promise((resolve) => {
       const socket = new net.Socket();
-      const timeout = 2000;
       
       const timer = setTimeout(() => {
         socket.destroy();
         resolve(false);
-      }, timeout);
+      }, 2000);
       
       socket.connect(port, hostname, () => {
         clearTimeout(timer);
@@ -219,252 +218,227 @@ class NetworkManager {
   }
 
   /**
-   * Génère les URLs d'accès
+   * Generates access URLs for local and network
    */
   generateAccessUrls(port, enableLan = false) {
-    const urls = {
-      local: `http://localhost:${port}`,
-      localhost: `http://127.0.0.1:${port}`
-    };
+    const localIP = this.getLocalIPAddress();
     
-    if (enableLan) {
-      const localIP = this.getLocalIPAddress();
-      if (localIP && localIP !== '127.0.0.1') {
-        urls.lan = `http://${localIP}:${port}`;
-      }
-    }
+    const urls = {
+      local: `http://127.0.0.1:${port}`,
+      localIP: `http://${localIP}:${port}`,
+      network: enableLan ? `http://${localIP}:${port}` : null
+    };
     
     return urls;
   }
 
   /**
-   * Détecte si le port nécessite des privilèges administrateur
+   * Checks if port requires admin privileges
    */
   requiresAdminPrivileges(port) {
     return port < 1024;
   }
 
   /**
-   * Vérifie si une adresse IP est privée (RFC 1918)
+   * Checks if an IP address is private (RFC 1918)
    */
   isPrivateIP(ip) {
-    try {
-      const parts = ip.split('.').map(num => parseInt(num, 10));
-      
-      // Vérifications des plages privées RFC 1918
-      return (
-        // 10.0.0.0/8 (10.0.0.0 à 10.255.255.255)
-        (parts[0] === 10) ||
-        
-        // 172.16.0.0/12 (172.16.0.0 à 172.31.255.255)
-        (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
-        
-        // 192.168.0.0/16 (192.168.0.0 à 192.168.255.255)
-        (parts[0] === 192 && parts[1] === 168) ||
-        
-        // 169.254.0.0/16 (Link-local)
-        (parts[0] === 169 && parts[1] === 254)
-      );
-    } catch (error) {
-      console.error('❌ Erreur validation IP privée:', error);
-      return false;
-    }
+    const parts = ip.split('.').map(Number);
+    
+    // 10.0.0.0/8
+    if (parts[0] === 10) return true;
+    
+    // 172.16.0.0/12
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+    
+    // 192.168.0.0/16
+    if (parts[0] === 192 && parts[1] === 168) return true;
+    
+    // 169.254.0.0/16 (link-local)
+    if (parts[0] === 169 && parts[1] === 254) return true;
+    
+    return false;
   }
 
   /**
-   * Obtient les informations réseau complètes avec distinction locale/réseau
+   * Gets complete network information with local/network distinction
    */
   getNetworkInfo(port, enableLan = false) {
     try {
-      const networkInfo = {
-        port: port,
-        enableLan: enableLan,
-        localIP: '127.0.0.1', // IP locale (loopback)
-        networkIP: null, // IP réseau (LAN)
-        urls: {
-          local: `http://127.0.0.1:${port}`,
-          network: null
-        }
-      };
-
-      // Détecter l'IP réseau (LAN) privée
-      const networkIP = this.getLocalIPAddress();
-      if (networkIP && networkIP !== '127.0.0.1' && this.isPrivateIP(networkIP)) {
-        networkInfo.networkIP = networkIP;
-        networkInfo.urls.network = `http://${networkIP}:${port}`;
-      }
-
-      // URLs d'accès
-      networkInfo.accessUrls = [];
-      networkInfo.accessUrls.push({
-        type: 'local',
-        label: 'Accès Local',
-        url: networkInfo.urls.local,
-        description: 'Accessible uniquement sur cette machine'
-      });
-
-      if (networkInfo.networkIP && enableLan) {
-        networkInfo.accessUrls.push({
-          type: 'network',
-          label: 'Accès Réseau',
-          url: networkInfo.urls.network,
-          description: 'Accessible depuis d\'autres appareils sur le réseau'
-        });
-      }
-
-      return networkInfo;
+      const localIP = this.getLocalIPAddress();
+      const urls = this.generateAccessUrls(port, enableLan);
       
-    } catch (error) {
-      console.error('❌ Erreur obtention info réseau:', error);
       return {
         port: port,
+        localIP: localIP,
+        networkIP: enableLan ? localIP : null,
+        urls: urls,
         enableLan: enableLan,
+        isPrivateNetwork: this.isPrivateIP(localIP),
+        requiresAdmin: this.requiresAdminPrivileges(port),
+        interfaces: this.getAllLocalIPs()
+      };
+      
+    } catch (error) {
+      console.error('❌ Network info error:', error);
+      return {
+        port: port,
         localIP: '127.0.0.1',
         networkIP: null,
         urls: {
           local: `http://127.0.0.1:${port}`,
+          localIP: `http://127.0.0.1:${port}`,
           network: null
         },
-        accessUrls: [{
-          type: 'local',
-          label: 'Accès Local',
-          url: `http://127.0.0.1:${port}`,
-          description: 'Accessible uniquement sur cette machine'
-        }]
+        enableLan: false,
+        isPrivateNetwork: true,
+        requiresAdmin: this.requiresAdminPrivileges(port),
+        interfaces: []
       };
     }
   }
 
   /**
-   * Suggestions de ports alternatifs
+   * Suggests alternative ports
    */
   async suggestAlternativePorts(currentPort, count = 3) {
-    const suggestions = [];
-    let testPort = currentPort + 1;
-    let attempts = 0;
-    const maxAttempts = 50;
-    
-    while (suggestions.length < count && attempts < maxAttempts) {
-      if (await this.isPortAvailable(testPort)) {
-        suggestions.push(testPort);
-      }
-      testPort++;
-      attempts++;
-    }
-    
-    // Ajouter quelques ports préférés si pas assez de suggestions
-    if (suggestions.length < count) {
-      for (const port of this.preferredPorts) {
-        if (port !== currentPort && !suggestions.includes(port)) {
-          if (await this.isPortAvailable(port)) {
-            suggestions.push(port);
-            if (suggestions.length >= count) break;
-          }
+    try {
+      const alternatives = [];
+      const basePort = currentPort || 8080;
+      
+      // Try ports around the current one
+      for (let i = 1; i <= count * 2 && alternatives.length < count; i++) {
+        const testPort = basePort + i;
+        if (await this.isPortAvailable(testPort)) {
+          alternatives.push(testPort);
         }
       }
-    }
-    
-    return suggestions;
-  }
-
-  /**
-   * Vérifie l'état du pare-feu Windows (approximatif)
-   */
-  async checkFirewallStatus() {
-    // Note: Detection exacte nécessiterait des modules natifs
-    // Ici on fait une approximation basée sur la connectivité
-    try {
-      const hasInternet = await this.testNetworkConnectivity();
-      const localIPs = this.getAllLocalIPs();
       
-      return {
-        hasInternet,
-        hasLocalNetwork: localIPs.length > 0,
-        recommendation: hasInternet ? 
-          'Le réseau semble fonctionnel' : 
-          'Vérifiez votre connexion réseau et pare-feu'
-      };
-      
-    } catch (error) {
-      return {
-        hasInternet: false,
-        hasLocalNetwork: false,
-        recommendation: 'Impossible de déterminer l\'état du réseau',
-        error: error.message
-      };
-    }
-  }
-
-  /**
-   * Obtient des informations de debug détaillées du réseau
-   */
-  getNetworkDebugInfo() {
-    try {
-      const interfaces = os.networkInterfaces();
-      const debugInfo = {
-        detected: {
-          localIP: '127.0.0.1',
-          networkIP: this.getLocalIPAddress(),
-          allInterfaces: []
-        },
-        analysis: {
-          hasPrivateNetwork: false,
-          hasPublicNetwork: false,
-          recommendedInterface: null
-        }
-      };
-
-      // Analyser toutes les interfaces
-      for (const [name, addresses] of Object.entries(interfaces)) {
-        for (const addr of addresses) {
-          if (addr.family === 'IPv4' && !addr.internal) {
-            const interfaceInfo = {
-              name: name,
-              address: addr.address,
-              netmask: addr.netmask,
-              isPrivate: this.isPrivateIP(addr.address),
-              type: this.isPrivateIP(addr.address) ? 'LAN' : 'WAN'
-            };
-            
-            debugInfo.detected.allInterfaces.push(interfaceInfo);
-            
-            if (interfaceInfo.isPrivate) {
-              debugInfo.analysis.hasPrivateNetwork = true;
-              if (!debugInfo.analysis.recommendedInterface) {
-                debugInfo.analysis.recommendedInterface = interfaceInfo;
-              }
-            } else {
-              debugInfo.analysis.hasPublicNetwork = true;
+      // If not enough found, try preferred ports
+      if (alternatives.length < count) {
+        for (const port of this.preferredPorts) {
+          if (port !== currentPort && !alternatives.includes(port)) {
+            if (await this.isPortAvailable(port)) {
+              alternatives.push(port);
+              if (alternatives.length >= count) break;
             }
           }
         }
       }
-
-      return debugInfo;
+      
+      return alternatives;
       
     } catch (error) {
-      console.error('❌ Erreur debug réseau:', error);
+      console.error('❌ Port suggestion error:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Checks Windows firewall status (approximate)
+   */
+  async checkFirewallStatus() {
+    try {
+      // Here we make an approximation based on connectivity
+      const isConnected = await this.testNetworkConnectivity();
+      
       return {
-        detected: {
-          localIP: '127.0.0.1',
-          networkIP: '127.0.0.1',
-          allInterfaces: []
-        },
-        analysis: {
-          hasPrivateNetwork: false,
-          hasPublicNetwork: false,
-          recommendedInterface: null
-        }
+        enabled: !isConnected, // Very rough approximation
+        blocking: !isConnected,
+        recommendation: isConnected ? 
+          'Network connectivity appears normal' : 
+          'Check your network connection and firewall'
+      };
+      
+    } catch (error) {
+      return {
+        enabled: true,
+        blocking: true,
+        recommendation: 'Unable to determine firewall status'
       };
     }
   }
 
   /**
-   * Réinitialise le cache des informations réseau
+   * Gets detailed network debug information
+   */
+  getNetworkDebugInfo() {
+    try {
+      const interfaces = os.networkInterfaces();
+      const platform = os.platform();
+      const hostname = os.hostname();
+      
+      const debug = {
+        platform: platform,
+        hostname: hostname,
+        interfaces: {},
+        summary: {
+          totalInterfaces: 0,
+          activeInterfaces: 0,
+          privateIPs: [],
+          publicIPs: []
+        }
+      };
+      
+      for (const [name, addresses] of Object.entries(interfaces)) {
+        debug.interfaces[name] = addresses.map(addr => ({
+          family: addr.family,
+          address: addr.address,
+          netmask: addr.netmask,
+          internal: addr.internal,
+          mac: addr.mac
+        }));
+        
+        debug.summary.totalInterfaces++;
+        
+        const ipv4Addresses = addresses.filter(addr => addr.family === 'IPv4' && !addr.internal);
+        if (ipv4Addresses.length > 0) {
+          debug.summary.activeInterfaces++;
+          
+          ipv4Addresses.forEach(addr => {
+            if (this.isPrivateIP(addr.address)) {
+              debug.summary.privateIPs.push(addr.address);
+            } else {
+              debug.summary.publicIPs.push(addr.address);
+            }
+          });
+        }
+      }
+      
+      return debug;
+      
+    } catch (error) {
+      return {
+        error: error.message,
+        platform: os.platform(),
+        hostname: os.hostname()
+      };
+    }
+  }
+
+  /**
+   * Finds multiple available ports
+   */
+  async findAvailablePorts(startPort, count = 5) {
+    const ports = [];
+    let currentPort = startPort;
+    
+    while (ports.length < count && currentPort < 65535) {
+      if (await this.isPortAvailable(currentPort)) {
+        ports.push(currentPort);
+      }
+      currentPort++;
+    }
+    
+    return ports;
+  }
+
+  /**
+   * Resets network information cache
    */
   refreshNetworkCache() {
     this.localIP = null;
-    this.currentPort = null;
+    return this.getLocalIPAddress();
   }
 }
 
