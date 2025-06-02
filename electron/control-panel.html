@@ -822,47 +822,107 @@
                 
                 showInfo('Starting server...', `Port ${port} • ${enableLan ? 'Network access enabled' : 'Local access only'}`);
                 
-                // Add timeout to prevent infinite loading
+                // Start polling for server status immediately to detect when server actually starts
+                let statusCheckInterval;
+                let statusCheckCount = 0;
+                const maxStatusChecks = 20; // Check for up to 40 seconds (20 checks * 2 seconds)
+                
+                const checkServerStatus = async () => {
+                    try {
+                        const status = await window.electronAPI.server.getStatus();
+                        if (status && status.running) {
+                            // Server is now running - update UI immediately
+                            serverStatus = {
+                                ...serverStatus,
+                                ...status,
+                                startTime: Date.now()
+                            };
+                            
+                            setButtonLoading(elements.startBtn, false);
+                            updateUI();
+                            
+                            const accessMode = enableLan ? 'available on local network' : 'local access only';
+                            showSuccess('Server started successfully', `Running on port ${status.port} • ${accessMode}`);
+                            addLog(`✅ Server started on port ${status.port} - Access: ${accessMode}`);
+                            
+                            // Clear the status check interval
+                            if (statusCheckInterval) {
+                                clearInterval(statusCheckInterval);
+                                statusCheckInterval = null;
+                            }
+                            
+                            return true; // Server is running
+                        }
+                        return false; // Server not ready yet
+                    } catch (error) {
+                        console.log('Status check error:', error);
+                        return false;
+                    }
+                };
+                
+                // Start status polling every 2 seconds
+                statusCheckInterval = setInterval(async () => {
+                    statusCheckCount++;
+                    const isRunning = await checkServerStatus();
+                    
+                    if (isRunning || statusCheckCount >= maxStatusChecks) {
+                        if (statusCheckInterval) {
+                            clearInterval(statusCheckInterval);
+                            statusCheckInterval = null;
+                        }
+                        
+                        if (!isRunning && statusCheckCount >= maxStatusChecks) {
+                            addLog('⚠️ Status polling timed out, but server may still be starting');
+                        }
+                    }
+                }, 2000);
+                
+                // Start the server and handle the result
                 const startPromise = window.electronAPI.server.start(config);
+                
+                // Set a client-side timeout that's shorter than the server timeout
                 const timeoutPromise = new Promise((_, reject) => {
-                    setTimeout(() => reject(new Error('Server start operation timed out after 45 seconds')), 45000);
+                    setTimeout(() => {
+                        // Check one more time before giving up
+                        checkServerStatus().then(isRunning => {
+                            if (!isRunning) {
+                                reject(new Error('Server start operation timed out after 35 seconds'));
+                            }
+                        });
+                    }, 35000);
                 });
                 
-                const result = await Promise.race([startPromise, timeoutPromise]);
-                
-                if (result.success) {
-                    const accessMode = enableLan ? 'available on local network' : 'local access only';
-                    showSuccess('Server started successfully', `Running on port ${port} • ${accessMode}`);
-                    addLog(`✅ Server started on port ${port} - Access: ${accessMode}`);
+                try {
+                    const result = await Promise.race([startPromise, timeoutPromise]);
                     
-                    serverStatus.running = true;
-                    serverStatus.port = config.port;
-                    serverStatus.startTime = Date.now();
-                    
-                    // Reset button loading first, then update UI
-                    setButtonLoading(elements.startBtn, false);
-                    updateUI();
-                    
-                    // Refresh network information
-                    setTimeout(async () => {
-                        try {
-                        const status = await window.electronAPI.server.getStatus();
-                        if (status && status.networkInfo) {
-                            serverStatus.networkInfo = status.networkInfo;
-                            updateUI();
-                                addLog(`🌐 Network info updated - Local: ${status.networkInfo.localIP}`);
-                            }
-                        } catch (error) {
-                            addLog('⚠️ Could not refresh network information', true);
+                    if (result.success) {
+                        // Server start command succeeded, but check actual status
+                        const currentStatus = await checkServerStatus();
+                        if (!currentStatus) {
+                            // If status check didn't already update, do it now
+                            serverStatus.running = true;
+                            serverStatus.port = result.port;
+                            serverStatus.startTime = Date.now();
+                            
+                            const accessMode = enableLan ? 'available on local network' : 'local access only';
+                            showSuccess('Server started successfully', `Running on port ${result.port} • ${accessMode}`);
+                            addLog(`✅ Server started on port ${result.port} - Access: ${accessMode}`);
                         }
-                    }, 1000);
-                } else {
-                    throw new Error(result.error || 'Server failed to start');
+                    } else {
+                        throw new Error(result.error || 'Server start failed');
+                    }
+                } catch (error) {
+                    // Clear status check interval on error
+                    if (statusCheckInterval) {
+                        clearInterval(statusCheckInterval);
+                        statusCheckInterval = null;
+                    }
+                    throw error;
                 }
+                
             } catch (error) {
                 handleError(error, 'Server startup');
             } finally {
-                // Always reset button loading state
                 setButtonLoading(elements.startBtn, false);
                 updateUI();
             }
@@ -923,19 +983,104 @@
                     enableLan: enableLan
                 };
                 
-                const startResult = await window.electronAPI.server.start(config);
+                // Use the same status polling logic as the start button
+                let statusCheckInterval;
+                let statusCheckCount = 0;
+                const maxStatusChecks = 20; // Check for up to 40 seconds (20 checks * 2 seconds)
                 
-                if (startResult.success) {
-                    const accessMode = enableLan ? 'available on local network' : 'local access only';
-                    showSuccess('Server restarted successfully', `Running on port ${port} • ${accessMode}`);
-                    addLog(`✅ Server restarted on port ${port} - Access: ${accessMode}`);
+                const checkServerStatus = async () => {
+                    try {
+                        const status = await window.electronAPI.server.getStatus();
+                        if (status && status.running) {
+                            // Server is now running - update UI immediately
+                            serverStatus = {
+                                ...serverStatus,
+                                ...status,
+                                startTime: Date.now()
+                            };
+                            
+                            setButtonLoading(elements.restartBtn, false);
+                            updateUI();
+                            
+                            const accessMode = enableLan ? 'available on local network' : 'local access only';
+                            showSuccess('Server restarted successfully', `Running on port ${status.port} • ${accessMode}`);
+                            addLog(`✅ Server restarted on port ${status.port} - Access: ${accessMode}`);
+                            
+                            // Clear the status check interval
+                            if (statusCheckInterval) {
+                                clearInterval(statusCheckInterval);
+                                statusCheckInterval = null;
+                            }
+                            
+                            return true; // Server is running
+                        }
+                        return false; // Server not ready yet
+                    } catch (error) {
+                        console.log('Restart status check error:', error);
+                        return false;
+                    }
+                };
+                
+                // Start status polling every 2 seconds
+                statusCheckInterval = setInterval(async () => {
+                    statusCheckCount++;
+                    const isRunning = await checkServerStatus();
                     
-                    serverStatus.running = true;
-                    serverStatus.port = port;
-                    serverStatus.startTime = Date.now();
-                } else {
-                    throw new Error(startResult.error || 'Restart failed during startup phase');
+                    if (isRunning || statusCheckCount >= maxStatusChecks) {
+                        if (statusCheckInterval) {
+                            clearInterval(statusCheckInterval);
+                            statusCheckInterval = null;
+                        }
+                        
+                        if (!isRunning && statusCheckCount >= maxStatusChecks) {
+                            addLog('⚠️ Restart status polling timed out, but server may still be starting');
+                        }
+                    }
+                }, 2000);
+                
+                // Start the server
+                const startPromise = window.electronAPI.server.start(config);
+                
+                // Set a client-side timeout for restart
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => {
+                        // Check one more time before giving up
+                        checkServerStatus().then(isRunning => {
+                            if (!isRunning) {
+                                reject(new Error('Server restart operation timed out after 35 seconds'));
+                            }
+                        });
+                    }, 35000);
+                });
+                
+                try {
+                    const startResult = await Promise.race([startPromise, timeoutPromise]);
+                    
+                    if (startResult.success) {
+                        // Server start command succeeded, but check actual status
+                        const currentStatus = await checkServerStatus();
+                        if (!currentStatus) {
+                            // If status check didn't already update, do it now
+                            serverStatus.running = true;
+                            serverStatus.port = startResult.port;
+                            serverStatus.startTime = Date.now();
+                            
+                            const accessMode = enableLan ? 'available on local network' : 'local access only';
+                            showSuccess('Server restarted successfully', `Running on port ${startResult.port} • ${accessMode}`);
+                            addLog(`✅ Server restarted on port ${startResult.port} - Access: ${accessMode}`);
+                        }
+                    } else {
+                        throw new Error(startResult.error || 'Restart failed during startup phase');
+                    }
+                } catch (error) {
+                    // Clear status check interval on error
+                    if (statusCheckInterval) {
+                        clearInterval(statusCheckInterval);
+                        statusCheckInterval = null;
+                    }
+                    throw error;
                 }
+                
             } catch (error) {
                 handleError(error, 'Server restart');
             } finally {

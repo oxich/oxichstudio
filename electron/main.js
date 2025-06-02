@@ -268,22 +268,81 @@ async function startNextJsServer() {
       });
 
       let serverStartupTimeout;
+      let healthCheckInterval;
       let isResolved = false;
 
-      // ✅ STARTUP TIMEOUT (60 seconds - increased from 30)
+      // ✅ IMPROVED STARTUP DETECTION - Use HTTP health checks instead of just stdout
+      const performStartupHealthCheck = async () => {
+        try {
+          const response = await fetch(`http://127.0.0.1:${serverPort}`, { 
+            method: 'HEAD',
+            timeout: 3000 
+          });
+          
+          if (response.ok || response.status < 500) {
+            // Server is responding - startup successful
+            if (!isResolved) {
+              clearTimeout(serverStartupTimeout);
+              if (healthCheckInterval) clearInterval(healthCheckInterval);
+              isResolved = true;
+              
+              await logManager.serverEvent('✅ OxichStudio server started successfully', { 
+                port: serverPort,
+                pid: nextJsProcess.pid,
+                uptime: '0s',
+                detectionMethod: 'HTTP health check'
+              });
+              
+              // Start monitoring
+              serverMonitor.startMonitoring(nextJsProcess.pid, serverPort);
+              
+              await updateTrayMenu();
+              
+              resolve({
+                success: true,
+                port: serverPort,
+                pid: nextJsProcess.pid,
+                hostname: hostname,
+                enableLan: enableLan
+              });
+            }
+            return true;
+          }
+        } catch (error) {
+          // Server not ready yet, continue waiting
+          return false;
+        }
+        return false;
+      };
+
+      // ✅ STARTUP TIMEOUT (30 seconds - more reasonable timeout)
       serverStartupTimeout = setTimeout(() => {
         if (!isResolved) {
           isResolved = true;
+          if (healthCheckInterval) clearInterval(healthCheckInterval);
           nextJsProcess?.kill();
           nextJsProcess = null;
           
-          const errorMsg = 'Server startup timed out after 60 seconds';
+          const errorMsg = 'Server startup timed out after 30 seconds';
           logManager.error(errorMsg, { port: serverPort });
           reject(new Error('OxichStudio is taking too long to start. This may be due to system performance or antivirus interference.'));
         }
-      }, 60000); // Increased to 60 seconds
+      }, 30000); // Reduced to 30 seconds
 
-      // ✅ STDOUT HANDLING
+      // ✅ START HEALTH CHECK POLLING AFTER A SHORT DELAY
+      setTimeout(() => {
+        if (!isResolved) {
+          healthCheckInterval = setInterval(async () => {
+            if (!isResolved) {
+              await performStartupHealthCheck();
+            } else {
+              clearInterval(healthCheckInterval);
+            }
+          }, 2000); // Check every 2 seconds
+        }
+      }, 3000); // Start health checks after 3 seconds
+
+      // ✅ STDOUT HANDLING (keep as fallback detection)
       nextJsProcess.stdout.on('data', async (data) => {
         const output = data.toString();
         
@@ -291,28 +350,47 @@ async function startNextJsServer() {
         console.log(`🔧 Next.js STDOUT: ${output.trim()}`);
         await logManager.debug('Server output', { output: output.trim() });
         
-        if (!isResolved && (output.includes('started server') || output.includes('Local:') || output.includes(`localhost:${serverPort}`))) {
-          clearTimeout(serverStartupTimeout);
-          isResolved = true;
-          
-          await logManager.serverEvent('✅ OxichStudio server started successfully', { 
-            port: serverPort,
-            pid: nextJsProcess.pid,
-            uptime: '0s'
-          });
-          
-          // Start monitoring
-          serverMonitor.startMonitoring(nextJsProcess.pid, serverPort);
-          
-          await updateTrayMenu();
-          
-          resolve({
-            success: true,
-            port: serverPort,
-            pid: nextJsProcess.pid,
-            hostname: hostname,
-            enableLan: enableLan
-          });
+        // Improved pattern matching for Next.js output
+        if (!isResolved && (
+          output.includes('started server') || 
+          output.includes('Local:') || 
+          output.includes(`localhost:${serverPort}`) ||
+          output.includes(`port ${serverPort}`) ||
+          output.includes('Ready on') ||
+          output.includes('ready -')
+        )) {
+          // Give HTTP health check a chance to confirm
+          setTimeout(async () => {
+            if (!isResolved) {
+              const isHealthy = await performStartupHealthCheck();
+              if (!isHealthy) {
+                // Fallback to stdout detection if health check fails
+                clearTimeout(serverStartupTimeout);
+                if (healthCheckInterval) clearInterval(healthCheckInterval);
+                isResolved = true;
+                
+                await logManager.serverEvent('✅ OxichStudio server started successfully', { 
+                  port: serverPort,
+                  pid: nextJsProcess.pid,
+                  uptime: '0s',
+                  detectionMethod: 'stdout parsing'
+                });
+                
+                // Start monitoring
+                serverMonitor.startMonitoring(nextJsProcess.pid, serverPort);
+                
+                await updateTrayMenu();
+                
+                resolve({
+                  success: true,
+                  port: serverPort,
+                  pid: nextJsProcess.pid,
+                  hostname: hostname,
+                  enableLan: enableLan
+                });
+              }
+            }
+          }, 1000); // Wait 1 second for HTTP check
         }
       });
 
